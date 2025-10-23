@@ -1,0 +1,37 @@
+{
+  "name": "template_commentary",
+  "theme": "Your theme description here",
+  "output_format": "commentary",
+  "words": {
+    "subjects": [
+      "the world",
+      "society",
+      "technology",
+      "culture"
+    ],
+    "verbs": [
+      "evolves",
+      "changes",
+      "transforms",
+      "develops"
+    ],
+    "descriptors": [
+      "rapidly",
+      "slowly",
+      "dramatically",
+      "subtly"
+    ],
+    "context": [
+      "today",
+      "now",
+      "recently",
+      "this year"
+    ]
+  },
+  "metadata": {
+    "description": "Template for creating commentary vocabularies",
+    "version": "1.0",
+    "instructions": "Replace with your vocabulary. Organize into subjects, verbs, descriptors, and context. The commentary format will construct sentences like: 'The {subject} {verb} {descriptor} {context}.'"
+  }
+}
+

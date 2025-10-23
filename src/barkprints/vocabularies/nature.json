@@ -1,0 +1,50 @@
+{
+  "name": "nature",
+  "theme": "Nature and seasons, perfect for haiku generation",
+  "output_format": "haiku",
+  "words": {
+    "1": [
+      "wind", "leaf", "rain", "sun", "tree", "bark", "moss", "dew",
+      "fog", "mist", "sky", "bird", "nest", "twig", "root", "branch",
+      "seed", "soil", "stone", "creek", "stream", "wood", "shade", "light",
+      "dawn", "dusk", "night", "day", "spring", "fall", "snow", "ice",
+      "frost", "cloud", "pine", "oak", "elm", "ash", "bud", "bloom",
+      "scent", "fresh", "wild", "soft", "old", "new", "deep", "bright",
+      "dark", "pale", "warm", "cool", "crisp", "still", "calm"
+    ],
+    "2": [
+      "seasons", "winter", "summer", "autumn", "forest", "mountain", 
+      "canyon", "valley", "meadow", "garden", "blossom", "petal",
+      "flower", "crimson", "amber", "silver", "golden", "morning",
+      "evening", "sunlight", "moonlight", "starlight", "shadow",
+      "whisper", "rustle", "flutter", "shelter", "nature", "river",
+      "weather", "thunder", "lightning", "rainfall", "snowfall",
+      "gentle", "ancient", "tender", "silent", "patient", "verdant",
+      "crimson", "copper", "azure", "emerald", "brilliant", "tranquil",
+      "peaceful", "sleeping", "waking", "dancing", "falling", "rising"
+    ],
+    "3": [
+      "evergreen", "whispering", "wandering", "glistening", "shimmering",
+      "reflecting", "awakening", "flowering", "cascading", "eternal",
+      "infinite", "delicate", "beautiful", "colorful", "glorious",
+      "magnificent", "marvelous", "wonderful", "radiant", "luminous",
+      "solitude", "harmony", "melody", "symphony", "memory",
+      "gravity", "serenity", "clarity", "mystery", "history"
+    ],
+    "4": [
+      "awakening", "returning", "ephemeral", "eternal spring",
+      "golden summer", "fading autumn", "deep winter", "meditation",
+      "transformation", "migration", "pollination", "hibernation",
+      "everlasting", "mesmerizing", "captivating", "regenerate"
+    ],
+    "5": [
+      "metamorphosis", "biodiversity", "photosynthesis",
+      "illumination", "rejuvenation", "tranquility"
+    ]
+  },
+  "metadata": {
+    "description": "A curated collection of nature-themed words organized by syllable count for haiku generation",
+    "version": "1.0"
+  }
+}
+

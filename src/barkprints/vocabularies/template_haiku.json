@@ -1,0 +1,35 @@
+{
+  "name": "template_haiku",
+  "theme": "Your theme description here",
+  "output_format": "haiku",
+  "words": {
+    "1": [
+      "one",
+      "word",
+      "here"
+    ],
+    "2": [
+      "two words",
+      "go here"
+    ],
+    "3": [
+      "three syllables",
+      "another one",
+      "beautiful"
+    ],
+    "4": [
+      "four syllables here",
+      "more examples"
+    ],
+    "5": [
+      "five syllables to count",
+      "illumination"
+    ]
+  },
+  "metadata": {
+    "description": "Template for creating haiku vocabularies",
+    "version": "1.0",
+    "instructions": "Replace the words with your own vocabulary. Organize by syllable count (1-5+). The haiku format will use these to construct 5-7-5 syllable poems."
+  }
+}
+

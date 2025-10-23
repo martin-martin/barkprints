@@ -1,0 +1,40 @@
+{
+  "name": "news",
+  "theme": "Current events and news commentary",
+  "output_format": "commentary",
+  "words": {
+    "subjects": [
+      "the world", "society", "people", "leaders", "citizens",
+      "the economy", "technology", "science", "politics", "culture",
+      "the market", "innovation", "progress", "change", "the future",
+      "humanity", "civilization", "democracy", "freedom", "justice",
+      "the environment", "climate", "resources", "energy", "development"
+    ],
+    "verbs": [
+      "evolves", "changes", "adapts", "transforms", "progresses",
+      "struggles", "advances", "faces", "overcomes", "challenges",
+      "debates", "discusses", "considers", "questions", "examines",
+      "reveals", "demonstrates", "shows", "proves", "indicates",
+      "requires", "demands", "needs", "seeks", "pursues"
+    ],
+    "descriptors": [
+      "rapidly", "slowly", "dramatically", "subtly", "significantly",
+      "profoundly", "unexpectedly", "predictably", "inevitably", "remarkably",
+      "controversially", "peacefully", "urgently", "carefully", "boldly",
+      "wisely", "foolishly", "courageously", "cautiously", "optimistically",
+      "pessimistically", "realistically", "ideally", "practically", "theoretically"
+    ],
+    "context": [
+      "today", "now", "currently", "presently", "lately",
+      "this week", "this month", "this year", "recently", "nowadays",
+      "in our time", "at present", "these days", "right now", "as we speak",
+      "worldwide", "globally", "locally", "nationally", "internationally",
+      "everywhere", "here", "there", "in the news", "according to reports"
+    ]
+  },
+  "metadata": {
+    "description": "Vocabulary for generating commentary on current events and news topics",
+    "version": "1.0"
+  }
+}
+
