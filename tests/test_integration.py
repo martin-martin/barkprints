@@ -5,33 +5,26 @@ import pytest
 from barkprints.text_generator import TextGenerator
 
 
-def test_end_to_end_nature_haiku(sample_image, temp_dir):
-    """Test complete flow: image -> nature vocabulary -> haiku."""
-    # Use the built-in nature vocabulary
+def test_end_to_end_nature(sample_image):
+    """Test complete flow: image -> nature corpus -> text."""
     generator = TextGenerator()
     
     text = generator.generate(str(sample_image), "nature")
     
-    # Verify it's a haiku (3 lines)
-    lines = text.split('\n')
-    assert len(lines) == 3
-    
-    # Each line should have content
-    for line in lines:
-        assert len(line.strip()) > 0
-        # Lines should be reasonable length
-        assert len(line.split()) >= 1
+    # Verify we get actual text
+    assert isinstance(text, str)
+    assert len(text) > 10  # Should be a real sentence
+    assert text.endswith('.')  # Should be properly punctuated
 
 
-def test_end_to_end_news_commentary(sample_image):
-    """Test complete flow: image -> news vocabulary -> commentary."""
+def test_end_to_end_literature(sample_image):
+    """Test complete flow: image -> literature corpus -> text."""
     generator = TextGenerator()
     
-    text = generator.generate(str(sample_image), "news")
+    text = generator.generate(str(sample_image), "literature")
     
-    # Should be a single sentence
-    assert text.endswith('.')
-    assert len(text.split()) >= 3  # At least a few words
+    assert isinstance(text, str)
+    assert len(text) > 10
 
 
 def test_multiple_images_maintain_determinism(sample_image, sample_image_2):
@@ -47,22 +40,22 @@ def test_multiple_images_maintain_determinism(sample_image, sample_image_2):
     text2a = generator.generate(str(sample_image_2), "nature")
     text2b = generator.generate(str(sample_image_2), "nature")
     assert text2a == text2b
-    
-    # But images should produce different output
-    assert text1a != text2a
 
 
-def test_vocabulary_and_format_compatibility():
-    """Test that format overrides work correctly."""
+def test_corpus_switching(sample_image):
+    """Test switching between corpora."""
     generator = TextGenerator()
     
-    # This should work (haiku vocab, sentence format)
-    text = generator.generate("barks.jpg", "nature", "sentence")
-    assert '\n' not in text  # Sentence format = single line
+    # Generate with different corpora
+    nature1 = generator.generate(str(sample_image), "nature")
+    lit1 = generator.generate(str(sample_image), "literature")
+    nature2 = generator.generate(str(sample_image), "nature")
     
-    # This should fail (news vocab, haiku format)
-    with pytest.raises(ValueError):
-        generator.generate("barks.jpg", "news", "haiku")
+    # Should be consistent per corpus
+    assert nature1 == nature2
+    
+    # Should differ between corpora
+    assert nature1 != lit1
 
 
 def test_real_world_usage_pattern():
@@ -72,24 +65,22 @@ def test_real_world_usage_pattern():
     try:
         generator = TextGenerator()
         
-        # Generate different representations of the same bark
-        haiku = generator.generate(bark_path, "nature", "haiku")
-        sentence = generator.generate(bark_path, "nature", "sentence")
-        news = generator.generate(bark_path, "news", "commentary")
+        # Get different "voices" for the same bark
+        nature_voice = generator.generate(bark_path, "nature")
+        lit_voice = generator.generate(bark_path, "literature")
         
         # All should succeed and return text
-        assert len(haiku) > 0
-        assert len(sentence) > 0
-        assert len(news) > 0
+        assert len(nature_voice) > 0
+        assert len(lit_voice) > 0
         
-        # Haiku should be multi-line, others single line
-        assert '\n' in haiku
-        assert '\n' not in sentence
+        # Get top matches
+        top_matches = generator.generate(bark_path, "nature", top_k=3)
+        assert len(top_matches) == 3
+        assert all(isinstance(s, str) and isinstance(sc, float) for s, sc in top_matches)
         
-        # Same image+vocab+format should always produce same output
-        haiku2 = generator.generate(bark_path, "nature", "haiku")
-        assert haiku == haiku2
+        # Same image+corpus should always produce same output
+        nature_voice2 = generator.generate(bark_path, "nature")
+        assert nature_voice == nature_voice2
         
     except FileNotFoundError:
         pytest.skip("Real bark image not available")
-

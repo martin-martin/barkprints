@@ -5,20 +5,20 @@ import sys
 from pathlib import Path
 
 from .text_generator import TextGenerator
-from .vocabulary_loader import VocabularyLoader
-from .format_loader import FormatLoader
+from .corpus_loader import CorpusLoader
 
 
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Generate poetry and text from tree bark images using deterministic feature mapping",
+        description="Generate text from tree bark images using corpus embedding matching",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  barkprints barks.jpg -v nature
-  barkprints barks.jpg -v news -f commentary
-  barkprints tree1.jpg tree2.jpg -v nature
+  barkprints barks.jpg -c nature
+  barkprints barks.jpg -c literature --top-k 3
+  barkprints tree1.jpg tree2.jpg -c nature
+  barkprints --list-corpora
         """
     )
     
@@ -29,46 +29,42 @@ Examples:
     )
     
     parser.add_argument(
-        '-v', '--vocabulary',
+        '-c', '--corpus',
         default='nature',
-        help='Vocabulary set to use (default: nature)'
+        help='Corpus to use for text matching (default: nature)'
     )
     
     parser.add_argument(
-        '-f', '--format',
-        default=None,
-        help='Output format override (default: use vocabulary default)'
+        '--top-k',
+        type=int,
+        default=1,
+        help='Return top K matches (default: 1)'
     )
     
     parser.add_argument(
-        '--list-vocabularies',
+        '--list-corpora',
         action='store_true',
-        help='List available vocabularies and exit'
-    )
-    
-    parser.add_argument(
-        '--list-formats',
-        action='store_true',
-        help='List available output formats and exit'
+        help='List available corpora and exit'
     )
     
     args = parser.parse_args()
     
-    # Handle list commands
-    if args.list_vocabularies:
-        loader = VocabularyLoader()
-        vocabs = loader.list_available()
-        print("Available vocabularies:")
-        for vocab in vocabs:
-            print(f"  - {vocab}")
-        sys.exit(0)
-    
-    if args.list_formats:
-        loader = FormatLoader()
-        formats = loader.list_available()
-        print("Available output formats:")
-        for fmt in formats:
-            print(f"  - {fmt}")
+    # Handle list command
+    if args.list_corpora:
+        loader = CorpusLoader()
+        corpora = loader.list_available()
+        if corpora:
+            print("Available corpora:")
+            for corpus_name in corpora:
+                try:
+                    corpus = loader.load(corpus_name)
+                    theme = corpus.metadata.get('theme', 'unknown')
+                    print(f"  - {corpus_name}: {len(corpus)} sentences ({theme})")
+                except Exception as e:
+                    print(f"  - {corpus_name}: Error loading - {e}")
+        else:
+            print("No corpora found.")
+            print("Create a corpus with: python -m barkprints.corpus_builder input.txt output.npz")
         sys.exit(0)
     
     # Check if images were provided
@@ -89,18 +85,25 @@ Examples:
             continue
         
         try:
-            text = generator.generate(
+            result = generator.generate(
                 str(path),
-                args.vocabulary,
-                args.format
+                args.corpus,
+                args.top_k
             )
             
             # Print with nice formatting
             if len(args.images) > 1:
                 print(f"\n{path.name}:")
-                print("-" * 40)
+                print("-" * 60)
             
-            print(text)
+            if args.top_k == 1:
+                # Single sentence
+                print(result)
+            else:
+                # Multiple matches with scores
+                print(f"Top {args.top_k} matches:")
+                for i, (sentence, score) in enumerate(result, 1):
+                    print(f"{i}. [{score:.3f}] {sentence}")
             
             if len(args.images) > 1:
                 print()
@@ -115,4 +118,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

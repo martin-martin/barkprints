@@ -13,43 +13,46 @@ def test_feature_extraction(sample_image):
     # Check that features is a numpy array
     assert isinstance(features, np.ndarray)
     
-    # Check that we got a reasonable number of features
-    assert len(features) > 0
+    # Check default dimension (384)
+    assert len(features) == 384
+    
+    # Check that all features are in [-1, 1] range
+    assert np.all(features >= -1.0)
+    assert np.all(features <= 1.0)
     
     # Check that all features are finite numbers
     assert np.all(np.isfinite(features))
 
 
-def test_deterministic_seed(sample_image):
-    """Test that the same image produces the same seed."""
-    extractor1 = ImageFeatureExtractor(sample_image)
-    seed1 = extractor1.get_deterministic_seed()
-    
-    extractor2 = ImageFeatureExtractor(sample_image)
-    seed2 = extractor2.get_deterministic_seed()
-    
-    assert seed1 == seed2
-    assert isinstance(seed1, int)
-
-
-def test_different_images_different_seeds(sample_image, sample_image_2):
-    """Test that different images produce different seeds."""
-    extractor1 = ImageFeatureExtractor(sample_image)
-    seed1 = extractor1.get_deterministic_seed()
-    
-    extractor2 = ImageFeatureExtractor(sample_image_2)
-    seed2 = extractor2.get_deterministic_seed()
-    
-    # Different images should (almost certainly) produce different seeds
-    assert seed1 != seed2
-
-
-def test_feature_vector_consistency(sample_image):
-    """Test that feature extraction is consistent across multiple calls."""
+def test_feature_extraction_custom_dim(sample_image):
+    """Test feature extraction with custom dimensions."""
     extractor = ImageFeatureExtractor(sample_image)
     
-    features1 = extractor.extract_features()
-    features2 = extractor.extract_features()
+    # Test different dimensions
+    for dim in [128, 384, 768]:
+        features = extractor.extract_features(target_dim=dim)
+        assert len(features) == dim
+        assert np.all(np.isfinite(features))
+
+
+def test_deterministic_features(sample_image):
+    """Test that the same image produces the same features."""
+    extractor1 = ImageFeatureExtractor(sample_image)
+    features1 = extractor1.extract_features()
+    
+    extractor2 = ImageFeatureExtractor(sample_image)
+    features2 = extractor2.extract_features()
     
     np.testing.assert_array_equal(features1, features2)
 
+
+def test_different_images_different_features(sample_image, sample_image_2):
+    """Test that different images produce different features."""
+    extractor1 = ImageFeatureExtractor(sample_image)
+    features1 = extractor1.extract_features()
+    
+    extractor2 = ImageFeatureExtractor(sample_image_2)
+    features2 = extractor2.extract_features()
+    
+    # Features should be different (with very high probability)
+    assert not np.array_equal(features1, features2)

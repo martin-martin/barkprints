@@ -40,3 +40,11 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
+# Temporary scripts
+create_sample_corpora.py
+
+# Large corpus files (commit small ones, ignore large custom ones)
+src/barkprints/corpora/*.npz
+!src/barkprints/corpora/nature.npz
+!src/barkprints/corpora/literature.npz
+

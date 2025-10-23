@@ -7,26 +7,32 @@ def main():
     # Create a generator instance
     generator = TextGenerator()
     
-    # Generate a haiku from a bark image
-    print("=== Nature Haiku ===")
-    haiku = generator.generate("barks.jpg", "nature")
-    print(haiku)
+    # Generate text from a bark image using nature corpus
+    print("=== Nature Match ===")
+    nature_text = generator.generate("barks.jpg", "nature")
+    print(nature_text)
     
-    # Generate news commentary from the same image
-    print("\n=== News Commentary ===")
-    commentary = generator.generate("barks.jpg", "news")
-    print(commentary)
+    # Try with literature corpus
+    print("\n=== Literature Match ===")
+    lit_text = generator.generate("barks.jpg", "literature")
+    print(lit_text)
     
-    # Use format override to create a sentence from nature vocabulary
-    print("\n=== Nature Sentence ===")
-    sentence = generator.generate("barks.jpg", "nature", "sentence")
-    print(sentence)
+    # Get top 3 matches with similarity scores
+    print("\n=== Top 3 Nature Matches ===")
+    matches = generator.generate("barks.jpg", "nature", top_k=3)
+    for i, (sentence, score) in enumerate(matches, 1):
+        print(f"{i}. [{score:.3f}] {sentence}")
     
     # The same image always produces the same output (deterministic)
     print("\n=== Verifying Determinism ===")
-    haiku2 = generator.generate("barks.jpg", "nature")
-    print(f"Haikus are identical: {haiku == haiku2}")
+    nature_text2 = generator.generate("barks.jpg", "nature")
+    print(f"Outputs are identical: {nature_text == nature_text2}")
+    
+    # Show how different corpora give different "voices" to the same bark
+    print("\n=== Same Bark, Different Perspectives ===")
+    print(f"Nature voice: {nature_text}")
+    print(f"Literary voice: {lit_text}")
+    print("\nThe bark's features map to different positions in different semantic spaces!")
 
 if __name__ == "__main__":
     main()
-

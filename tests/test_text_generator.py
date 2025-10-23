@@ -9,102 +9,79 @@ def test_text_generator_initialization():
     """Test TextGenerator can be initialized."""
     generator = TextGenerator()
     
-    assert generator.vocabulary_loader is not None
-    assert generator.format_loader is not None
+    assert generator.corpus_loader is not None
+    assert generator.matcher is not None
 
 
-def test_generate_with_custom_vocabulary(sample_image, haiku_vocabulary):
-    """Test generating text with a custom vocabulary."""
-    vocab_dir, vocab_name = haiku_vocabulary
-    
+def test_generate_with_nature_corpus(sample_image):
+    """Test generating text with nature corpus."""
     generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
     
-    text = generator.generate(str(sample_image), vocab_name)
+    text = generator.generate(str(sample_image), "nature")
     
     assert isinstance(text, str)
     assert len(text) > 0
 
 
-def test_generate_determinism(sample_image, haiku_vocabulary):
+def test_generate_determinism(sample_image):
     """Test that generation is deterministic for the same image."""
-    vocab_dir, vocab_name = haiku_vocabulary
-    
     generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
     
-    text1 = generator.generate(str(sample_image), vocab_name)
-    text2 = generator.generate(str(sample_image), vocab_name)
+    text1 = generator.generate(str(sample_image), "nature")
+    text2 = generator.generate(str(sample_image), "nature")
     
     assert text1 == text2
 
 
-def test_generate_different_images_different_output(
-    sample_image, sample_image_2, haiku_vocabulary
-):
-    """Test that different images produce different output."""
-    vocab_dir, vocab_name = haiku_vocabulary
-    
+def test_generate_different_images(sample_image, sample_image_2):
+    """Test that different images may produce different output."""
     generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
     
-    text1 = generator.generate(str(sample_image), vocab_name)
-    text2 = generator.generate(str(sample_image_2), vocab_name)
+    text1 = generator.generate(str(sample_image), "nature")
+    text2 = generator.generate(str(sample_image_2), "nature")
     
-    # Different images should (very likely) produce different text
-    assert text1 != text2
+    # They might be the same by chance with small corpora, but features should differ
+    # We just verify both succeed
+    assert isinstance(text1, str)
+    assert isinstance(text2, str)
 
 
-def test_generate_with_format_override(sample_image, haiku_vocabulary):
-    """Test generating with format override."""
-    vocab_dir, vocab_name = haiku_vocabulary
-    
+def test_generate_with_top_k(sample_image):
+    """Test generating with top-k matches."""
     generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
     
-    # Override to use sentence format instead of haiku
-    text = generator.generate(str(sample_image), vocab_name, "sentence")
+    matches = generator.generate(str(sample_image), "nature", top_k=3)
     
-    assert isinstance(text, str)
-    # Should be single line (sentence format)
-    assert '\n' not in text
+    assert isinstance(matches, list)
+    assert len(matches) == 3
+    
+    for sentence, score in matches:
+        assert isinstance(sentence, str)
+        assert isinstance(score, float)
+        assert -1.0 <= score <= 1.0
 
 
-def test_generate_with_commentary_vocabulary(sample_image, commentary_vocabulary):
-    """Test generating with commentary vocabulary."""
-    vocab_dir, vocab_name = commentary_vocabulary
-    
+def test_generate_different_corpora(sample_image):
+    """Test generating with different corpora."""
     generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
     
-    text = generator.generate(str(sample_image), vocab_name)
+    nature_text = generator.generate(str(sample_image), "nature")
+    lit_text = generator.generate(str(sample_image), "literature")
     
-    assert isinstance(text, str)
-    assert len(text) > 0
-    assert text.endswith('.')
+    # Both should succeed
+    assert isinstance(nature_text, str)
+    assert isinstance(lit_text, str)
+    
+    # They will differ because corpora are different
+    assert nature_text != lit_text
 
 
-def test_generate_with_nonexistent_vocabulary(sample_image, temp_dir):
-    """Test generating with non-existent vocabulary raises error."""
-    vocab_dir = temp_dir / "vocabularies"
-    vocab_dir.mkdir()
-    
+def test_generate_nonexistent_corpus(sample_image):
+    """Test generating with non-existent corpus raises error."""
     generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
     
     with pytest.raises(FileNotFoundError):
         generator.generate(str(sample_image), "nonexistent")
-
-
-def test_generate_with_nonexistent_format(sample_image, haiku_vocabulary):
-    """Test generating with non-existent format raises error."""
-    vocab_dir, vocab_name = haiku_vocabulary
-    
-    generator = TextGenerator()
-    generator.vocabulary_loader.vocabularies_dir = vocab_dir
-    
-    with pytest.raises(KeyError):
-        generator.generate(str(sample_image), vocab_name, "nonexistent")
 
 
 def test_generate_with_real_bark_image(real_bark_image):
@@ -114,13 +91,7 @@ def test_generate_with_real_bark_image(real_bark_image):
     
     generator = TextGenerator()
     
-    # Test with nature vocabulary
     text = generator.generate(str(real_bark_image), "nature")
     
     assert isinstance(text, str)
     assert len(text) > 0
-    
-    # Should be a haiku (3 lines)
-    lines = text.split('\n')
-    assert len(lines) == 3
-

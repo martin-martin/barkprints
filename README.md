@@ -1,54 +1,64 @@
 # Barkprints 🌳
 
-Generate poetry and text from tree bark images using deterministic feature mapping.
+Generate text from tree bark images using embedding-based corpus matching.
 
 ## Concept
 
-Barkprints is a creative project that explores the idea of finding "hidden language" in tree bark patterns. Rather than using computer vision to recognize what's in an image, it treats the numerical pixel data as a unique fingerprint that maps deterministically to words and text.
+Barkprints explores finding "hidden language" in tree bark patterns: instead of recognizing what's in an image, it treats the numerical pixel data as if it were already a text embedding and finds the most similar actual text.
 
-Every bark image produces a consistent "voice" - the same image always generates the same text. Different bark patterns create different poems or commentary, as if each tree is speaking through its unique texture.
+Every bark image produces a deterministic voice. Each unique bark pattern maps to a consistent position in embedding space, which matches to specific sentences in a chosen corpus. The same image always finds the same text, as if each tree speaks through its texture.
 
-## Features
+## How It Works
 
-- **Deterministic Generation**: Same image always produces the same output
-- **Pluggable Vocabularies**: Load different word sets for different themes
-- **Pluggable Output Formats**: Haiku, commentary, sentences, or custom formats
-- **Modern Python**: Built with Python 3.10+, type hints, and UV package management
-- **PyPI-Ready**: Structured for easy publishing as a Python package
+1. **Feature Extraction**: Extracts 384-dimensional feature vector from bark image
+   - Color histograms, texture gradients, spatial statistics
+   - Frequency features via DCT coefficients
+   - Normalized to embedding-like range [-1, 1]
+
+2. **Corpus Loading**: Loads pre-embedded text corpus
+   - Sentences are embedded using sentence-transformers
+   - Stored with their embeddings for fast matching
+
+3. **Similarity Matching**: Finds nearest text via cosine similarity
+   - Treats image features as if they were text embeddings
+   - Computes similarity with all corpus embeddings
+   - Returns the closest match(es)
+
+4. **Deterministic Output**: Same image + corpus = same text, always
 
 ## Installation
 
-Using UV (recommended):
+Using uv (recommended):
 
 ```bash
 cd barkprints
 uv sync
 ```
 
-Or install directly:
-
-```bash
-uv pip install -e .
-```
-
 ## Quick Start
 
-Generate a haiku from a bark image:
+Generate text from a bark image:
 
 ```bash
-barkprints barks.jpg -v nature
+barkprints barks.jpg -c nature
 ```
 
-Generate news commentary:
+Try a different corpus:
 
 ```bash
-barkprints barks.jpg -v news -f commentary
+barkprints barks.jpg -c literature
+```
+
+Get top 3 matches with similarity scores:
+
+```bash
+barkprints barks.jpg -c nature --top-k 3
 ```
 
 Process multiple images:
 
 ```bash
-barkprints tree1.jpg tree2.jpg tree3.jpg -v nature
+barkprints tree1.jpg tree2.jpg tree3.jpg -c nature
 ```
 
 ## Usage
@@ -57,137 +67,148 @@ barkprints tree1.jpg tree2.jpg tree3.jpg -v nature
 barkprints <image> [options]
 
 Options:
-  -v, --vocabulary NAME    Vocabulary set to use (default: nature)
-  -f, --format FORMAT      Output format override (default: vocabulary default)
-  --list-vocabularies      Show available vocabularies
-  --list-formats          Show available output formats
+  -c, --corpus NAME    Corpus to use (default: nature)
+  --top-k K           Return top K matches (default: 1)
+  --list-corpora      Show available corpora
 ```
 
-## Built-in Vocabularies
+## Built-in Corpora
 
-### Nature (default)
-- **Theme**: Nature and seasons
-- **Format**: Haiku (5-7-5 syllables)
-- **Example Output**:
-  ```
-  ancient bark whispers
-  golden autumn glistening
-  shadow dance tranquil
-  ```
+### Nature
+- **Theme**: Nature and forest wisdom
+- **Size**: 50 sentences
+- **Content**: Reflections on trees, seasons, growth, and natural cycles
 
-### News
-- **Theme**: Current events and commentary
-- **Format**: Commentary sentences
-- **Example Output**:
-  ```
-  The world evolves dramatically today.
-  ```
+### Literature
+- **Theme**: Philosophical and literary quotes
+- **Size**: 30 sentences
+- **Content**: Classical wisdom and philosophical observations
 
-## Creating Custom Vocabularies
+## Creating Custom Corpora
 
-Create a JSON file in `src/barkprints/vocabularies/`:
+Create a corpus from any text file:
 
-```json
-{
-  "name": "custom",
-  "theme": "Your theme description",
-  "output_format": "haiku",
-  "words": {
-    "1": ["word", "list", "here"],
-    "2": ["longer", "words", "here"],
-    "3": ["syllables", "matter", "for haiku"]
-  },
-  "metadata": {
-    "description": "Custom vocabulary",
-    "version": "1.0"
-  }
-}
+```bash
+python -m barkprints.corpus_builder input.txt output.npz --name myco rpus --theme "Your theme"
 ```
 
-For non-haiku formats, organize words by category:
+### Example: Create a News Corpus
 
-```json
-{
-  "name": "custom",
-  "theme": "Your theme",
-  "output_format": "commentary",
-  "words": {
-    "subjects": ["things", "people"],
-    "verbs": ["do", "say"],
-    "descriptors": ["quickly", "slowly"],
-    "context": ["today", "now"]
-  }
-}
+```bash
+# 1. Create a text file with sentences (one per line or paragraph)
+cat > news.txt << EOF
+Technology continues to reshape modern society.
+Climate change demands urgent global action.
+Scientific breakthroughs offer hope for the future.
+EOF
+
+# 2. Build the corpus with embeddings
+uv run python -m barkprints.corpus_builder news.txt src/barkprints/corpora/news.npz --theme "Current events"
+
+# 3. Use it
+barkprints barks.jpg -c news
 ```
 
-## Creating Custom Output Formats
+### Corpus Guidelines
 
-1. Create a new file in `src/barkprints/output_formats/`:
+- **Text quality**: Use well-formed, complete sentences
+- **Sentence length**: 10-200 characters work best
+- **Diversity**: Include varied language for richer matching
+- **Theme coherence**: Keep sentences thematically related
+- **Size**: 30-100 sentences is a good range
+
+## Example Outputs
+
+With `barks.jpg`:
+
+```bash
+$ barkprints barks.jpg -c nature
+Death feeds new life in endless succession.
+
+$ barkprints barks.jpg -c literature
+The journey matters more than the destination itself.
+
+$ barkprints barks.jpg -c nature --top-k 3
+Top 3 matches:
+1. [0.067] Death feeds new life in endless succession.
+2. [0.063] Decay transforms into fertile soil again.
+3. [0.062] Connection requires opening the heart completely.
+```
+
+## Programmatic Usage
 
 ```python
-from random import Random
-from ..vocabulary import Vocabulary
-from .base_format import BaseOutputFormat
+from barkprints.text_generator import TextGenerator
 
-class MyFormat(BaseOutputFormat):
-    @property
-    def format_name(self) -> str:
-        return "myformat"
-    
-    def generate(self, vocabulary: Vocabulary, rng: Random) -> str:
-        # Your generation logic here
-        words = vocabulary.words
-        # Use rng for deterministic randomness
-        return "Generated text"
+generator = TextGenerator()
+
+# Get single match
+text = generator.generate("barks.jpg", "nature")
+print(text)
+
+# Get top 3 matches with scores
+matches = generator.generate("barks.jpg", "nature", top_k=3)
+for sentence, score in matches:
+    print(f"[{score:.3f}] {sentence}")
+
+# The same image always produces the same output
+text2 = generator.generate("barks.jpg", "nature")
+assert text == text2  # Always True!
 ```
 
-2. Register it in `format_loader.py`:
+## Technical Details
 
-```python
-from .output_formats import MyFormat
+**Feature Vector**: Extracts ~700 numerical features from images, then pads/truncates to match corpus embedding dimensions (typically 384 for all-MiniLM-L6-v2).
 
-# In FormatLoader.__init__:
-self.register(MyFormat())
-```
+**Embedding Model**: Uses `all-MiniLM-L6-v2` by default (384 dimensions). Can use any sentence-transformer model by specifying `--model` when building corpora.
 
-## How It Works
+**Corpus Format**: `.npz` files containing:
+- `sentences`: array of text strings
+- `embeddings`: (N, D) matrix of embeddings
+- `metadata`: dict with corpus info
 
-1. **Feature Extraction**: Extracts numerical features from the image (color histograms, texture gradients, statistical measures)
-2. **Deterministic Seeding**: Hashes the feature vector to create a consistent seed
-3. **Word Selection**: Uses the seed to deterministically select words from the vocabulary
-4. **Text Generation**: Applies the output format's rules to construct the final text
+**Similarity Metric**: Cosine similarity between normalized vectors. Higher scores indicate better matches.
+
+**Determinism**: Same pixels → same features → same nearest neighbor → same text output, guaranteed.
 
 ## Development
 
-This project uses UV for dependency management and modern Python practices:
-
-- Python 3.10+ with modern type hints
-- No `from __future__ import` needed
-- Structured with `src/` layout for clean packaging
-- Ready for PyPI publishing
-
 ### Running Tests
 
-Install dev dependencies and run the test suite:
-
 ```bash
-uv sync --all-groups
 uv run pytest
 ```
 
-Run tests with coverage report:
+### Creating Test Corpora
 
 ```bash
-uv run pytest --cov=barkprints --cov-report=html
+uv run python create_sample_corpora.py
 ```
 
-The test suite includes:
-- **45 tests** covering all components
-- **65% code coverage**
-- Unit tests for feature extraction, vocabularies, and formats
-- Integration tests for end-to-end workflows
-- CLI tests for command-line interface
-- Determinism tests to verify reproducibility
+### Project Structure
+
+```
+barkprints/
+├── src/barkprints/
+│   ├── feature_extractor.py   # Image → 384-D feature vector
+│   ├── corpus.py               # Corpus data structure
+│   ├── corpus_loader.py        # Load .npz corpus files
+│   ├── corpus_builder.py       # Build corpora from text
+│   ├── embedding_matcher.py    # Cosine similarity matching
+│   ├── text_generator.py       # Main generation pipeline
+│   └── corpora/               # Built-in corpus files
+│       ├── nature.npz
+│       └── literature.npz
+├── tests/                      # Test suite
+├── pyproject.toml             # Modern Python project config
+└── README.md                   # This file
+```
+
+## Philosophy
+
+This project treats images and text as inhabitants of the same conceptual space, a space of meaning represented numerically. By pretending that image features are text embeddings, we create a poetic bridge between visual texture and language. Each tree's unique bark pattern becomes a coordinate in this shared space, pointing to specific human expressions.
+
+It's not about what the bark looks like, it's about where the bark's numerical essence lives in relation to human language.
 
 ## License
 
@@ -195,5 +216,9 @@ MIT
 
 ## Credits
 
-Created as an artistic exploration of finding meaning in nature's patterns.
+Created as an artistic exploration of the relationship between visual patterns and language through numerical representation.
 
+Powered by:
+- [sentence-transformers](https://www.sbert.net/) for text embeddings
+- [PIL/Pillow](https://python-pillow.org/) for image processing
+- [NumPy](https://numpy.org/) & [SciPy](https://scipy.org/) for numerical operations

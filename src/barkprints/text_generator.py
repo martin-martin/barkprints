@@ -1,54 +1,48 @@
-"""Generate text from images using vocabulary and output formats."""
+"""Generate text from images using corpus embedding matching."""
 
-from random import Random
-
+from .corpus_loader import CorpusLoader
+from .embedding_matcher import EmbeddingMatcher
 from .feature_extractor import ImageFeatureExtractor
-from .format_loader import FormatLoader
-from .vocabulary import Vocabulary
-from .vocabulary_loader import VocabularyLoader
 
 
 class TextGenerator:
-    """Generate deterministic text from images."""
+    """Generate deterministic text from images via embedding matching."""
     
     def __init__(self):
         """Initialize text generator with loaders."""
-        self.vocabulary_loader = VocabularyLoader()
-        self.format_loader = FormatLoader()
+        self.corpus_loader = CorpusLoader()
+        self.matcher = EmbeddingMatcher()
     
     def generate(
         self,
         image_path: str,
-        vocabulary_name: str,
-        format_name: str | None = None
-    ) -> str:
-        """Generate text from an image using specified vocabulary.
+        corpus_name: str,
+        top_k: int = 1
+    ) -> str | list[tuple[str, float]]:
+        """Generate text from an image using specified corpus.
         
         Args:
             image_path: Path to the image file
-            vocabulary_name: Name of vocabulary to use
-            format_name: Optional format override (uses vocabulary default if None)
+            corpus_name: Name of corpus to use
+            top_k: Number of top matches to return (1 = single text, >1 = list with scores)
             
         Returns:
-            Generated text string
+            If top_k=1: Single matched sentence (str)
+            If top_k>1: List of (sentence, similarity_score) tuples
         """
-        # Extract features and get seed
+        # Load corpus first to get embedding dimension
+        corpus = self.corpus_loader.load(corpus_name)
+        embedding_dim = corpus.embeddings.shape[1]
+        
+        # Extract features matching corpus embedding dimension
         extractor = ImageFeatureExtractor(image_path)
-        seed = extractor.get_deterministic_seed()
+        image_embedding = extractor.extract_features(target_dim=embedding_dim)
         
-        # Initialize seeded random generator
-        rng = Random(seed)
+        # Find nearest sentence(s)
+        matches = self.matcher.find_nearest(image_embedding, corpus, top_k)
         
-        # Load vocabulary
-        vocabulary = self.vocabulary_loader.load(vocabulary_name)
-        
-        # Determine format to use
-        if format_name is None:
-            format_name = vocabulary.output_format
-        
-        # Get format instance
-        output_format = self.format_loader.get(format_name)
-        
-        # Generate text
-        return output_format.generate(vocabulary, rng)
-
+        # Return format based on top_k
+        if top_k == 1:
+            return matches[0][0]  # Just the sentence
+        else:
+            return matches  # List of (sentence, score) tuples
