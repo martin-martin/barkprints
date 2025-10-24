@@ -4,7 +4,7 @@ Generate text from tree bark images using embedding-based corpus matching.
 
 ## Concept
 
-Barkprints explores finding "hidden language" in tree bark patterns: instead of recognizing what's in an image, it treats the numerical pixel data as if it were already a text embedding and finds the most similar actual text.
+Barkprints explores finding hidden language in tree bark patterns. Instead of attempting to recognize what's in an image, it treats the numerical pixel data like it's already a text embedding and finds the most similar actual text from a corpus.
 
 Every bark image produces a deterministic voice. Each unique bark pattern maps to a consistent position in embedding space, which matches to specific sentences in a chosen corpus. The same image always finds the same text, as if each tree speaks through its texture.
 
@@ -13,10 +13,10 @@ Every bark image produces a deterministic voice. Each unique bark pattern maps t
 1. **Feature Extraction**: Extracts 384-dimensional feature vector from bark image
    - Color histograms, texture gradients, spatial statistics
    - Frequency features via DCT coefficients
-   - Normalized to embedding-like range [-1, 1]
+   - Normalized to embedding-like range `[-1, 1]`
 
 2. **Corpus Loading**: Loads pre-embedded text corpus
-   - Sentences are embedded using sentence-transformers
+   - Sentences are embedded using `sentence-transformers`
    - Stored with their embeddings for fast matching
 
 3. **Similarity Matching**: Finds nearest text via cosine similarity
@@ -75,11 +75,13 @@ Options:
 ## Built-in Corpora
 
 ### Nature
+
 - **Theme**: Nature and forest wisdom
 - **Size**: 50 sentences
 - **Content**: Reflections on trees, seasons, growth, and natural cycles
 
 ### Literature
+
 - **Theme**: Philosophical and literary quotes
 - **Size**: 30 sentences
 - **Content**: Classical wisdom and philosophical observations
@@ -89,7 +91,7 @@ Options:
 Create a corpus from any text file:
 
 ```bash
-python -m barkprints.corpus_builder input.txt output.npz --name myco rpus --theme "Your theme"
+python -m barkprints.corpus_builder input.txt output.npz --name mycorpus --theme "Your theme"
 ```
 
 ### Example: Create a News Corpus
@@ -164,12 +166,12 @@ assert text == text2  # Always True!
 
 **Corpus Format**: `.npz` files containing:
 - `sentences`: array of text strings
-- `embeddings`: (N, D) matrix of embeddings
+- `embeddings`: `(N, D)` matrix of embeddings
 - `metadata`: dict with corpus info
 
 **Similarity Metric**: Cosine similarity between normalized vectors. Higher scores indicate better matches.
 
-**Determinism**: Same pixels → same features → same nearest neighbor → same text output, guaranteed.
+**Determinism**: Same pixels → same features → same nearest neighbor → same text output
 
 ## Development
 
@@ -177,12 +179,6 @@ assert text == text2  # Always True!
 
 ```bash
 uv run pytest
-```
-
-### Creating Test Corpora
-
-```bash
-uv run python create_sample_corpora.py
 ```
 
 ### Project Structure
@@ -200,15 +196,15 @@ barkprints/
 │       ├── nature.npz
 │       └── literature.npz
 ├── tests/                      # Test suite
-├── pyproject.toml             # Modern Python project config
+├── pyproject.toml             # Python project config
 └── README.md                   # This file
 ```
 
 ## Philosophy
 
-This project treats images and text as inhabitants of the same conceptual space, a space of meaning represented numerically. By pretending that image features are text embeddings, we create a poetic bridge between visual texture and language. Each tree's unique bark pattern becomes a coordinate in this shared space, pointing to specific human expressions.
+This project treats images and text as inhabitants of the same conceptual space, a space of meaning represented numerically. By pretending that image features are text embeddings, we create a poetic bridge between visual texture and language. Each tree's unique bark pattern, their _barkprint_, becomes a coordinate in this shared space that points to a specific human expression.
 
-It's not about what the bark looks like, it's about where the bark's numerical essence lives in relation to human language.
+For me, the project encourages me to look at trees and wonder what they may say, which opens a playful additional interaction layer with nature around me. It also addresses the interesting assumption that reality, human language, images of nature, could (can?) be compressed to a numerial representation. If everything is represented as numbers and we strip it down to that layer, how universal are these numbers? In this example of mixing image vectors and text vectors, I'm skipping a necessary translation step (one that works amazingly well these days, with CLIP etc.) by treating an image vector as a text vector. This idea makes me think about that there are different dialects of numeric languages that need translation between each other. There is a visual numeric dialect and a text-based dialect. Both are expressed in numbers, but the numbers mean different things. So in that sense, I think of it similarly to different languages. Anyways, just for fun, and climbing.
 
 ## License
 
@@ -218,7 +214,7 @@ MIT
 
 Created as an artistic exploration of the relationship between visual patterns and language through numerical representation.
 
-Powered by:
+Dependencies:
 - [sentence-transformers](https://www.sbert.net/) for text embeddings
 - [PIL/Pillow](https://python-pillow.org/) for image processing
 - [NumPy](https://numpy.org/) & [SciPy](https://scipy.org/) for numerical operations
