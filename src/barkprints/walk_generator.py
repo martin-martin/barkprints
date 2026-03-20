@@ -15,6 +15,10 @@ class WalkGenerator:
             alpha: Blend factor. 0.0 = pure bigram coherence, 1.0 = pure bark similarity.
             max_words: Maximum number of words in output.
         """
+        if not (0.0 <= alpha <= 1.0):
+            raise ValueError("alpha must be between 0.0 and 1.0 inclusive")
+        if max_words < 1:
+            raise ValueError("max_words must be >= 1")
         self.alpha = alpha
         self.max_words = max_words
 
@@ -38,18 +42,12 @@ class WalkGenerator:
 
         return matrix @ vec / (row_norms * vec_norm)
 
-    def _word_index(self, word: str, corpus: Corpus) -> int | None:
-        """Find the index of a word in the vocabulary."""
-        try:
-            return corpus.vocabulary.index(word)
-        except ValueError:
-            return None
-
     def _score_candidates(
         self,
         candidates: list[tuple[str, int]],
         feature_vector: np.ndarray,
         corpus: Corpus,
+        vocab_index: dict[str, int],
     ) -> str:
         """Score bigram candidates by blending transition probability and bark similarity.
 
@@ -68,7 +66,7 @@ class WalkGenerator:
 
         for word, count in candidates:
             transition_prob = count / total_count
-            idx = self._word_index(word, corpus)
+            idx = vocab_index.get(word)
             if idx is not None:
                 sim = self._cosine_similarities(
                     feature_vector, corpus.word_embeddings[idx : idx + 1]
@@ -94,12 +92,13 @@ class WalkGenerator:
         Returns:
             Generated text string
         """
-        stride = len(feature_vector) // self.max_words
+        stride = max(1, len(feature_vector) // self.max_words)
+        vocab_index = {w: i for i, w in enumerate(corpus.vocabulary)}
 
         # Step 1: Pick first word from start_words by bark similarity
         start_indices = []
         for word in corpus.start_words:
-            idx = self._word_index(word, corpus)
+            idx = vocab_index.get(word)
             if idx is not None:
                 start_indices.append((word, idx))
 
@@ -127,7 +126,7 @@ class WalkGenerator:
 
             if candidates:
                 # Score candidates by blended transition + bark similarity
-                current_word = self._score_candidates(candidates, rolled, corpus)
+                current_word = self._score_candidates(candidates, rolled, corpus, vocab_index)
             else:
                 # Dead-end fallback: pick from entire vocabulary by bark similarity
                 sims = self._cosine_similarities(rolled, corpus.word_embeddings)

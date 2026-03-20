@@ -56,7 +56,10 @@ class CorpusLoader:
         start_words = data["start_words"].tolist()
 
         # Deserialize bigram table from JSON
-        bigram_raw = json.loads(str(data["bigram_json"]))
+        bigram_value = data["bigram_json"].item()
+        if isinstance(bigram_value, bytes):
+            bigram_value = bigram_value.decode("utf-8")
+        bigram_raw = json.loads(bigram_value)
         bigram_table = {
             word: [(next_word, count) for next_word, count in pairs]
             for word, pairs in bigram_raw.items()

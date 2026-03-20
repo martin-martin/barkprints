@@ -65,6 +65,11 @@ class CorpusBuilder:
 
         # Tokenize
         tokenized = self.tokenize(sentences)
+        if not tokenized:
+            raise ValueError(
+                "No usable tokens found. Input text may be too short or all "
+                "sentences were filtered by the length threshold."
+            )
 
         # Build vocabulary (sorted for determinism)
         all_words = set()

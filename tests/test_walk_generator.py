@@ -49,10 +49,9 @@ def test_different_vectors_produce_different_output():
     text1 = walker.generate(vec1, corpus)
     text2 = walker.generate(vec2, corpus)
 
-    # With different random vectors, output should differ
-    # (not guaranteed but very likely with distinct seeds)
-    assert isinstance(text1, str)
-    assert isinstance(text2, str)
+    # With deterministic seeds on a small corpus, different vectors
+    # produce different walks
+    assert text1 != text2
 
 
 def test_respects_max_words():
