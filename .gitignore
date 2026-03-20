@@ -47,4 +47,7 @@ create_sample_corpora.py
 src/barkprints/corpora/*.npz
 !src/barkprints/corpora/nature.npz
 !src/barkprints/corpora/literature.npz
+!src/barkprints/corpora/walden.npz
+!src/barkprints/corpora/rilke.npz
+!src/barkprints/corpora/tao.npz
 
