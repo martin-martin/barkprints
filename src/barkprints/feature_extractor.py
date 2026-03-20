@@ -33,8 +33,11 @@ class ImageFeatureExtractor:
         """
         if target_dim is None:
             target_dim = self.TARGET_DIM
-        # Convert to RGB if needed
+        # Convert to RGB and resize large images for consistent, fast extraction
         img = self.image.convert('RGB')
+        max_dim = 512
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
         img_array = np.array(img)
         
         features = []
