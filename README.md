@@ -173,6 +173,89 @@ assert text == text2  # Always True!
 
 **Determinism**: Same pixels → same features → same nearest neighbor → same text output
 
+## Mobile / Web App
+
+Barkprints ships a small mobile-friendly web app so you can use it from your phone while out and about: open a URL, take a bark photo with the camera, see the matched text. It also registers as a PWA, so iOS and Android can "Add to Home Screen" and it'll launch like a regular app.
+
+### Run locally
+
+```bash
+uv sync --extra web
+uv run barkprints-web                    # localhost only
+uv run barkprints-web --host 0.0.0.0     # also reachable on your LAN
+```
+
+Then open `http://<your-ip>:8000` on your phone (LAN access only). For a quick test from outside, an `ngrok http 8000` or `tailscale serve` tunnel works.
+
+### Deploy on a Hetzner cloud server
+
+The app is a single uvicorn process — no database, no queue. A 1 vCPU / 2 GB box is more than enough.
+
+**1) Get the code on the server**
+
+```bash
+git clone https://github.com/martin-martin/barkprints.git /opt/barkprints
+cd /opt/barkprints
+# install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --extra web
+```
+
+**2) systemd unit** — save as `/etc/systemd/system/barkprints.service`:
+
+```ini
+[Unit]
+Description=Barkprints web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/barkprints
+Environment=BARKPRINTS_HOST=127.0.0.1
+Environment=BARKPRINTS_PORT=8000
+ExecStart=/root/.local/bin/uv run --extra web barkprints-web
+Restart=on-failure
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/barkprints
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now barkprints
+```
+
+**3) HTTPS via Caddy** — service workers and the camera capture flow require HTTPS on a real domain. Caddy is the simplest option (auto Let's Encrypt). Install Caddy and use this `/etc/caddy/Caddyfile`:
+
+```caddyfile
+barkprints.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8000
+    request_body {
+        max_size 20MB
+    }
+}
+```
+
+```bash
+systemctl reload caddy
+```
+
+Point the DNS A record for `barkprints.example.com` at the server, then visit it from your phone, take a photo, and tap "Add to Home Screen" (iOS Safari: Share → Add to Home Screen; Android Chrome: ⋮ → Install app).
+
+### Notes
+
+- The PWA caches the UI shell offline; image inference still requires the server (it runs the corpus matcher).
+- Uploads are kept in memory only long enough to score; nothing is persisted to disk.
+- Bind to `127.0.0.1` and let Caddy terminate TLS — never expose uvicorn directly to the public internet.
+
 ## Development
 
 ### Running Tests

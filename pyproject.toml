@@ -15,8 +15,16 @@ dependencies = [
     "sentence-transformers>=2.2.0",
 ]
 
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+]
+
 [project.scripts]
 barkprints = "barkprints.__main__:main"
+barkprints-web = "barkprints.web.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -30,4 +38,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/barkprints"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/barkprints/web/static" = "barkprints/web/static"
 
