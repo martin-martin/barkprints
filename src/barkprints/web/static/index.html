@@ -141,18 +141,8 @@
 </head>
 <body>
 <main>
-  <h1>Barkprints</h1>
-  <p class="tag">Listen to what the trees have to say.</p>
-
-  <div class="card">
-    <div class="pick">
-      <button id="capture-btn" class="primary" type="button">Take a bark photo</button>
-      <button id="upload-btn" type="button">Choose from library</button>
-    </div>
-    <input id="capture-input" type="file" accept="image/*" capture="environment" />
-    <input id="upload-input" type="file" accept="image/*" />
-    <div id="preview" class="preview"><img id="preview-img" alt="" /></div>
-  </div>
+  <h1>🌳 Barkprints 🌲</h1>
+  <p class="tag">Thoughts written in tree bark.</p>
 
   <div class="card">
     <label for="corpus">Corpus</label>
@@ -168,6 +158,16 @@
         <input id="maxwords" type="number" min="1" max="200" value="20" />
       </div>
     </div>
+  </div>
+
+  <div class="card">
+    <div class="pick">
+      <button id="capture-btn" class="primary" type="button">Take a bark photo</button>
+      <button id="upload-btn" type="button">Choose from library</button>
+    </div>
+    <input id="capture-input" type="file" accept="image/*" capture="environment" />
+    <input id="upload-input" type="file" accept="image/*" />
+    <div id="preview" class="preview"><img id="preview-img" alt="" /></div>
   </div>
 
   <div class="card result" id="result" aria-live="polite">

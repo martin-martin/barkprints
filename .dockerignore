@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.git/
+.gitignore
+tests/
+htmlcov/
+.pytest_cache/
+.coverage
+example.py
+barks.jpg
+*.md

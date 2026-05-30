@@ -1,0 +1,20 @@
+services:
+  barkprints:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: barkprints:local
+    container_name: barkprints
+    # Exposed only on localhost for verification; public access is via the
+    # existing soundmap Caddy (shared soundmap_web network) over HTTPS.
+    ports:
+      - "127.0.0.1:5051:8000"
+    networks:
+      - soundmap_web
+    restart: unless-stopped
+
+# The reverse proxy (and its 80/443 binding) already lives in the soundmap
+# stack. We attach to that network so Caddy can reach this container by name.
+networks:
+  soundmap_web:
+    external: true

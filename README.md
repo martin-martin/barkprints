@@ -94,6 +94,44 @@ Open the URL on your phone and "Add to Home Screen" for an app-like experience. 
 
 API endpoints: `GET /api/corpora`, `POST /api/generate` (multipart: `image`, `corpus`, `alpha`, `max_words`), `GET /healthz`.
 
+## Deployment (Docker)
+
+Production runs at **https://barkprints.quest** on a VPS that also hosts another app
+(`soundmap`). That app's Caddy container already owns ports 80/443 and handles TLS, so
+barkprints does **not** run its own reverse proxy — it sits behind the existing Caddy:
+
+- `Dockerfile` — FastAPI/uvicorn app. It installs only the runtime deps
+  (`fastapi`, `uvicorn`, `python-multipart`, `pillow`, `numpy`, `scipy`).
+  `sentence-transformers`/`torch` are deliberately **excluded**: they're only needed to
+  *build* corpora, never to serve requests.
+- `docker-compose.yml` — runs the `barkprints` container, bound to `127.0.0.1:5051` for
+  local checks, and attached to the **external** `soundmap_web` Docker network so Caddy
+  can reach it as `http://barkprints:8000`.
+- The site block (`barkprints.quest, www.barkprints.quest` → `reverse_proxy
+  barkprints:8000`, with www→apex redirect) lives in the **soundmap project's
+  `Caddyfile`**, not here.
+
+Deploy / redeploy app code:
+
+```bash
+docker compose up -d --build
+```
+
+> ⚠️ **Caddyfile gotcha — reload won't pick up edits.** Caddy mounts the `Caddyfile` as a
+> single file. Editing it on the host changes the file's inode, but the container's mount
+> still points at the old one, so `caddy reload` silently keeps serving the **old** config
+> (it logs `config is unchanged`). The symptom: a newly added site returns a TLS error
+> (`tlsv1 alert internal error`) because Caddy never learned about it and so never got a
+> cert. **Fix: restart the Caddy container** so the file is re-mounted:
+>
+> ```bash
+> # run from the soundmap project dir (where the Caddyfile + caddy service live)
+> docker compose restart caddy
+> ```
+>
+> After the restart, the first HTTPS request triggers Let's Encrypt issuance and may fail
+> for a few seconds before the cert is ready — retry and it'll come up.
+
 ## Built-in Corpora
 
 | Corpus       | Words  | Theme                                   |
@@ -184,6 +222,8 @@ barkprints/
 │   ├── web/                   # FastAPI + PWA web interface
 │   └── corpora/               # Built-in corpus .npz files
 ├── tests/
+├── Dockerfile                 # Runtime image (no torch/sentence-transformers)
+├── docker-compose.yml         # Container, joins soundmap's Caddy network
 ├── pyproject.toml
 └── README.md
 ```
