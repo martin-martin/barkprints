@@ -4,7 +4,7 @@ This guide explains how to create custom text corpora for use with Barkprints.
 
 ## What is a Corpus?
 
-A corpus in Barkprints is a collection of sentences with their pre-computed text embeddings. When you provide a bark image, the system finds which sentence's embedding is most similar to the image's feature vector.
+A corpus in Barkprints is built from a body of text and captures it at the *word* level: the unique vocabulary, a pre-computed embedding for each word, a bigram transition table (which words follow which), and the set of sentence-start words. When you provide a bark image, the system walks this word graph one step at a time, steered by the image's feature vector (see the main README for the `alpha` blend).
 
 ## Quick Start
 
@@ -195,23 +195,24 @@ The `.npz` format contains:
 
 ```python
 {
-    'sentences': np.array(['sentence 1', 'sentence 2', ...]),  # Text strings
-    'embeddings': np.array([[...], [...], ...]),               # (N, D) embeddings
-    'metadata': {                                               # Optional metadata
+    'vocabulary': np.array(['ancient', 'bark', ...], dtype=object),  # unique words (sorted)
+    'word_embeddings': np.array([[...], ...]),                       # (V, D) per-word embeddings
+    'bigram_json': np.array('{"the": [["forest", 3], ...], ...}'),   # JSON transition table
+    'start_words': np.array(['ancient', 'every', ...], dtype=object),# words that begin sentences
+    'metadata': {                                                     # optional metadata
         'name': 'corpus_name',
         'theme': 'description',
         'source': 'where it came from',
-        'model': 384,  # embedding dimension
-        'num_sentences': 50
+        'model': 384,          # embedding dimension
+        'num_words': 235
     }
 }
 ```
 
-You can also create these programmatically:
+You can also build and save one programmatically:
 
 ```python
-from barkprints.corpus_builder import CorpusBuilder
-import numpy as np
+from barkprints.corpus_builder import CorpusBuilder, save_corpus
 
 builder = CorpusBuilder(model_name='all-MiniLM-L6-v2')
 
@@ -220,19 +221,13 @@ Your text here.
 Multiple sentences.
 """
 
-sentences, embeddings, metadata = builder.build_from_text(
+corpus = builder.build_corpus(
     text,
     corpus_name="mycorpus",
-    metadata={"theme": "Custom theme"}
+    metadata={"theme": "Custom theme"},
 )
 
-# Save
-np.savez_compressed(
-    'src/barkprints/corpora/mycorpus.npz',
-    sentences=np.array(sentences, dtype=object),
-    embeddings=embeddings,
-    metadata=np.array(metadata)
-)
+save_corpus(corpus, 'src/barkprints/corpora/mycorpus.npz')
 ```
 
 ## Performance Considerations
