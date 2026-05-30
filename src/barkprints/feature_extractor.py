@@ -1,4 +1,4 @@
-"""Extract 768-dimensional feature vectors from images for embedding matching."""
+"""Extract 384-dimensional feature vectors from images for embedding matching."""
 
 from pathlib import Path
 
@@ -33,8 +33,11 @@ class ImageFeatureExtractor:
         """
         if target_dim is None:
             target_dim = self.TARGET_DIM
-        # Convert to RGB if needed
+        # Convert to RGB and resize large images for consistent, fast extraction
         img = self.image.convert('RGB')
+        max_dim = 512
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
         img_array = np.array(img)
         
         features = []
@@ -117,11 +120,20 @@ class ImageFeatureExtractor:
             ])
         
         # Color correlation features
+        # Guard against flat channels (zero variance) which make corrcoef divide
+        # by zero and emit NaN; treat an undefined correlation as 0.0.
         r, g, b = img_array[:, :, 0], img_array[:, :, 1], img_array[:, :, 2]
+
+        def _safe_corr(a: np.ndarray, b: np.ndarray) -> float:
+            a, b = a.flatten(), b.flatten()
+            if a.std() == 0 or b.std() == 0:
+                return 0.0
+            return float(np.corrcoef(a, b)[0, 1])
+
         features.extend([
-            np.corrcoef(r.flatten(), g.flatten())[0, 1],
-            np.corrcoef(r.flatten(), b.flatten())[0, 1],
-            np.corrcoef(g.flatten(), b.flatten())[0, 1],
+            _safe_corr(r, g),
+            _safe_corr(r, b),
+            _safe_corr(g, b),
         ])
         
         # Grayscale statistics
