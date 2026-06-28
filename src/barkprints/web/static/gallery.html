@@ -7,6 +7,7 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/static/icon-192.png" />
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
 <title>Barkprints — Saved</title>
 <style>
   :root {
@@ -53,6 +54,19 @@
   .del:hover { color: #b3261e; border-color: #b3261e; }
   .empty { color: var(--muted); text-align: center; padding: 40px 0; }
   .error { color: #b3261e; }
+  #map {
+    height: 280px; width: 100%; border-radius: 16px; margin-bottom: 16px;
+    border: 1px solid var(--border); display: none; background: var(--card);
+  }
+  #map.show { display: block; }
+  /* Keep Leaflet popups legible against the app's dark theme. */
+  .leaflet-popup-content { margin: 10px 12px; font: inherit; }
+  .leaflet-popup-content img {
+    width: 100%; border-radius: 8px; display: block; margin-bottom: 8px;
+    aspect-ratio: 4 / 3; object-fit: cover;
+  }
+  .leaflet-popup-content .pq { font-size: 14px; line-height: 1.35; margin: 0 0 4px; }
+  .leaflet-popup-content .pd { color: #6a6a6a; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -62,8 +76,11 @@
     <a class="nav" href="/">＋ New</a>
   </div>
   <p class="tag">Your kept tree thoughts.</p>
+  <div id="map"></div>
   <div id="list"></div>
 </main>
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/barkmap.js"></script>
 <script>
   const list = document.getElementById('list');
 
@@ -107,7 +124,40 @@
     list.innerHTML = `<p class="empty">Nothing saved yet.<br><a class="nav" href="/">Make one →</a></p>`;
   }
 
+  let map = null;
+  function renderMap(entries) {
+    const mapEl = document.getElementById('map');
+    const located = entries.filter(e => e.lat != null && e.lon != null);
+    if (!located.length) { mapEl.classList.remove('show'); return; }
+
+    mapEl.classList.add('show');
+    if (!map) {
+      map = L.map(mapEl, { scrollWheelZoom: false });
+      window.bpTileLayer().addTo(map);
+    } else {
+      map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+    }
+
+    const latlngs = [];
+    for (const e of located) {
+      const popup = `
+        <img loading="lazy" src="${e.image_url}" alt="Saved bark photo" />
+        <p class="pq">${escapeHtml(e.text)}</p>
+        <div class="pd">${escapeHtml(formatDate(e.created_at))}</div>`;
+      L.marker([e.lat, e.lon]).addTo(map).bindPopup(popup);
+      latlngs.push([e.lat, e.lon]);
+    }
+    if (latlngs.length === 1) {
+      map.setView(latlngs[0], 16);
+    } else {
+      map.fitBounds(latlngs, { padding: [30, 30], maxZoom: 17 });
+    }
+    // The container starts hidden, so Leaflet may have measured it at 0px.
+    setTimeout(() => map.invalidateSize(), 0);
+  }
+
   function render(entries) {
+    renderMap(entries);
     if (!entries.length) { renderEmpty(); return; }
     list.innerHTML = '';
     for (const e of entries) {

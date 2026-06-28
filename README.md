@@ -104,11 +104,15 @@ uv run python -m barkprints.web.adduser alice --update   # change an existing pa
 uv run python -m barkprints.web.adduser --list           # list usernames
 ```
 
-Once signed in, generating a poem reveals a **Save this** button. Saving stores the
-photo, the generated text, a timestamp, and — if you allow location access — the
-**geolocation** captured when you picked the photo (so you can find the tree again).
-Saved entries appear in the per-user **Saved** gallery, each linking to a map and
-offering deletion.
+Once signed in, generating a poem reveals a **Save this** button and a small map. The
+pin starts at your device's GPS fix (if you allow location access), and you can **drag
+it to the exact tree** or tap the map to place it — handy when GPS is a few metres off
+or when you're saving a photo from your library that was taken elsewhere. Saving stores
+the photo, the generated text, a timestamp, and the chosen **location** (so you can find
+the tree again). Saved entries appear in the per-user **Saved** gallery, which plots
+every located entry on a map (markers open a photo + text popup) above the list of
+cards. The map uses a **vendored copy of Leaflet** (`static/vendor/leaflet/`, BSD-2);
+only the OpenStreetMap tile images are fetched at runtime.
 
 Persisted data (a SQLite DB, uploaded photos, and the cookie-signing key) lives under
 `BARKPRINTS_DATA_DIR` (default `data/`). Auth uses bcrypt password hashes and a signed

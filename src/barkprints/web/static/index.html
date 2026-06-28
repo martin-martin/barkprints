@@ -10,6 +10,7 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/static/icon-192.png" />
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
 <title>Barkprints</title>
 <style>
   :root {
@@ -64,6 +65,13 @@
   .save-row button:disabled { opacity: 0.5; cursor: progress; }
   .geo { color: var(--muted); font-size: 13px; }
   .saved-ok { color: var(--accent); font-size: 14px; font-weight: 600; }
+  .pickmap-wrap { width: 100%; margin-top: 12px; display: none; }
+  .pickmap-wrap.show { display: block; }
+  .pickmap-wrap .hint { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  #pickmap {
+    height: 220px; width: 100%; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--bg);
+  }
   .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -197,11 +205,17 @@
       <button id="save-btn" type="button">Save this</button>
       <span class="geo" id="geo-status"></span>
     </div>
+    <div class="pickmap-wrap" id="pickmap-wrap">
+      <p class="hint">Drag the pin to the exact tree, or tap the map to place it.</p>
+      <div id="pickmap"></div>
+    </div>
   </div>
 
   <footer>Add to home screen for an app-like experience.</footer>
 </main>
 
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/barkmap.js"></script>
 <script>
   const corpusSelect = document.getElementById('corpus');
   const alphaInput = document.getElementById('alpha');
@@ -217,14 +231,22 @@
   const saveRow = document.getElementById('save-row');
   const saveBtn = document.getElementById('save-btn');
   const geoStatus = document.getElementById('geo-status');
+  const pickMapWrap = document.getElementById('pickmap-wrap');
   const logoutLink = document.getElementById('logout');
 
-  // The image currently shown, the text generated for it, and the most recent
-  // geolocation fix — captured when the photo is picked so "Save" can persist
-  // them together.
+  // The image currently shown and the text generated for it.
   let currentFile = null;
   let currentText = null;
-  let lastGeo = null;
+
+  // Location state. `gpsGeo` is the raw device fix (with accuracy); `pickedGeo`
+  // is the spot we'll actually save — seeded from GPS but refinable by dragging
+  // the pin. `pinManual` tracks whether the user has overridden the GPS spot, so
+  // we stop auto-recentering and drop the (now meaningless) accuracy radius.
+  let gpsGeo = null;
+  let pickedGeo = null;
+  let pinManual = false;
+  let pickMap = null;
+  let pickMarker = null;
 
   const lastSettings = {
     corpus: localStorage.getItem('bp-corpus') || 'nature',
@@ -290,24 +312,96 @@
     resultEl.innerHTML = `<blockquote>${escapeHtml(text)}</blockquote>`;
   }
 
+  // Remember the last picked spot so the map opens somewhere useful even before
+  // (or without) a GPS fix — e.g. on a second photo from the same walk.
+  const FALLBACK_KEY = 'bp-lastloc';
+
+  function fmt(lat, lon) {
+    return `${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}`;
+  }
+
+  function updateGeoStatus() {
+    if (!pickedGeo) return;
+    if (!pinManual && gpsGeo) {
+      geoStatus.textContent =
+        `📍 ${fmt(pickedGeo.lat, pickedGeo.lon)} (±${Math.round(gpsGeo.accuracy)}m) — drag to refine`;
+    } else {
+      geoStatus.textContent = `📍 ${fmt(pickedGeo.lat, pickedGeo.lon)} (pinned)`;
+    }
+  }
+
+  function fallbackCenter() {
+    try {
+      const raw = localStorage.getItem(FALLBACK_KEY);
+      if (raw) {
+        const [la, lo] = raw.split(',').map(Number);
+        if (isFinite(la) && isFinite(lo)) return { center: [la, lo], zoom: 16 };
+      }
+    } catch (e) {}
+    return { center: [20, 0], zoom: 2 };
+  }
+
+  function ensurePickMap() {
+    if (pickMap) return;
+    const fc = fallbackCenter();
+    pickMap = L.map('pickmap', { scrollWheelZoom: false }).setView(fc.center, fc.zoom);
+    window.bpTileLayer().addTo(pickMap);
+    pickMap.on('click', (e) => setPin(e.latlng.lat, e.latlng.lng, true));
+  }
+
+  function showPicker() {
+    pickMapWrap.classList.add('show');
+    ensurePickMap();
+    // The container was hidden, so Leaflet may have measured it at 0px.
+    setTimeout(() => pickMap && pickMap.invalidateSize(), 0);
+  }
+
+  function resetPicker() {
+    pickMapWrap.classList.remove('show');
+    if (pickMarker && pickMap) pickMap.removeLayer(pickMarker);
+    pickMarker = null;
+  }
+
+  function setPin(lat, lon, manual) {
+    pickedGeo = { lat, lon };
+    pinManual = manual;
+    ensurePickMap();
+    if (!pickMarker) {
+      pickMarker = L.marker([lat, lon], { draggable: true }).addTo(pickMap);
+      pickMarker.on('dragend', () => {
+        const ll = pickMarker.getLatLng();
+        setPin(ll.lat, ll.lng, true);
+      });
+    } else {
+      pickMarker.setLatLng([lat, lon]);
+    }
+    if (!manual) pickMap.setView([lat, lon], 17);
+    try { localStorage.setItem(FALLBACK_KEY, `${lat},${lon}`); } catch (e) {}
+    updateGeoStatus();
+  }
+
   function requestLocation() {
-    lastGeo = null;
+    gpsGeo = null;
+    pickedGeo = null;
+    pinManual = false;
     if (!('geolocation' in navigator)) {
-      geoStatus.textContent = 'Location unavailable on this device.';
+      geoStatus.textContent = 'Location unavailable — tap the map to mark the tree.';
       return;
     }
-    geoStatus.textContent = '📍 Locating…';
+    geoStatus.textContent = '📍 Locating… (or tap the map to set the spot)';
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        lastGeo = {
+        gpsGeo = {
           lat: pos.coords.latitude,
           lon: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
         };
-        geoStatus.textContent =
-          `📍 ${lastGeo.lat.toFixed(5)}, ${lastGeo.lon.toFixed(5)} (±${Math.round(lastGeo.accuracy)}m)`;
+        // Only auto-place if the user hasn't already pinned a spot by hand.
+        if (!pinManual) setPin(gpsGeo.lat, gpsGeo.lon, false);
       },
-      () => { geoStatus.textContent = 'Location off — will save without it.'; },
+      () => {
+        if (!pinManual) geoStatus.textContent = 'Location off — tap the map to mark the tree.';
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
   }
@@ -317,6 +411,7 @@
     currentFile = file;
     currentText = null;
     saveRow.classList.remove('show');
+    resetPicker();
     const url = URL.createObjectURL(file);
     previewImg.src = url;
     preview.classList.add('has-image');
@@ -346,6 +441,7 @@
       saveBtn.disabled = false;
       saveBtn.textContent = 'Save this';
       saveRow.classList.add('show');
+      showPicker();
     } catch (err) {
       showError('Network error. Try again.');
     } finally {
@@ -363,10 +459,13 @@
     fd.append('corpus', corpusSelect.value);
     fd.append('alpha', alphaInput.value);
     fd.append('max_words', maxWordsInput.value);
-    if (lastGeo) {
-      fd.append('lat', lastGeo.lat);
-      fd.append('lon', lastGeo.lon);
-      fd.append('accuracy', lastGeo.accuracy);
+    if (pickedGeo) {
+      fd.append('lat', pickedGeo.lat);
+      fd.append('lon', pickedGeo.lon);
+      // Accuracy only describes an un-moved GPS fix; a hand-placed pin is exact.
+      if (!pinManual && gpsGeo && gpsGeo.accuracy != null) {
+        fd.append('accuracy', gpsGeo.accuracy);
+      }
     }
     try {
       const res = await fetch('/api/save', { method: 'POST', body: fd });
