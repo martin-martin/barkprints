@@ -239,11 +239,13 @@
   let currentText = null;
 
   // Location state. `gpsGeo` is the raw device fix (with accuracy); `pickedGeo`
-  // is the spot we'll actually save — seeded from GPS but refinable by dragging
-  // the pin. `pinManual` tracks whether the user has overridden the GPS spot, so
-  // we stop auto-recentering and drop the (now meaningless) accuracy radius.
+  // is the spot we'll actually save — seeded automatically but refinable by
+  // dragging the pin. `pinSource` records where an auto-placed pin came from
+  // ('exif' from the photo, which wins, or 'gps' from the device); `pinManual`
+  // means the user moved it, so we stop auto-recentering and drop the accuracy.
   let gpsGeo = null;
   let pickedGeo = null;
+  let pinSource = null;
   let pinManual = false;
   let pickMap = null;
   let pickMarker = null;
@@ -322,11 +324,15 @@
 
   function updateGeoStatus() {
     if (!pickedGeo) return;
-    if (!pinManual && gpsGeo) {
-      geoStatus.textContent =
-        `📍 ${fmt(pickedGeo.lat, pickedGeo.lon)} (±${Math.round(gpsGeo.accuracy)}m) — drag to refine`;
+    const c = fmt(pickedGeo.lat, pickedGeo.lon);
+    if (pinManual) {
+      geoStatus.textContent = `📍 ${c} (pinned)`;
+    } else if (pinSource === 'exif') {
+      geoStatus.textContent = `📍 ${c} (from photo) — drag to refine`;
+    } else if (pinSource === 'gps' && gpsGeo) {
+      geoStatus.textContent = `📍 ${c} (±${Math.round(gpsGeo.accuracy)}m) — drag to refine`;
     } else {
-      geoStatus.textContent = `📍 ${fmt(pickedGeo.lat, pickedGeo.lon)} (pinned)`;
+      geoStatus.textContent = `📍 ${c} (pinned)`;
     }
   }
 
@@ -362,9 +368,10 @@
     pickMarker = null;
   }
 
-  function setPin(lat, lon, manual) {
+  function setPin(lat, lon, manual, source) {
     pickedGeo = { lat, lon };
     pinManual = manual;
+    if (!manual) pinSource = source || null;
     ensurePickMap();
     if (!pickMarker) {
       pickMarker = L.marker([lat, lon], { draggable: true }).addTo(pickMap);
@@ -383,6 +390,7 @@
   function requestLocation() {
     gpsGeo = null;
     pickedGeo = null;
+    pinSource = null;
     pinManual = false;
     if (!('geolocation' in navigator)) {
       geoStatus.textContent = 'Location unavailable — tap the map to mark the tree.';
@@ -396,8 +404,9 @@
           lon: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
         };
-        // Only auto-place if the user hasn't already pinned a spot by hand.
-        if (!pinManual) setPin(gpsGeo.lat, gpsGeo.lon, false);
+        // Auto-place from GPS unless the user pinned by hand, or the photo's
+        // own EXIF location (more authoritative) already placed the pin.
+        if (!pinManual && pinSource !== 'exif') setPin(gpsGeo.lat, gpsGeo.lon, false, 'gps');
       },
       () => {
         if (!pinManual) geoStatus.textContent = 'Location off — tap the map to mark the tree.';
@@ -442,6 +451,11 @@
       saveBtn.textContent = 'Save this';
       saveRow.classList.add('show');
       showPicker();
+      // The photo's own GPS tag, if any, beats the device fix — especially for
+      // a library photo taken somewhere other than where you're standing now.
+      if (!pinManual && typeof data.exif_lat === 'number' && typeof data.exif_lon === 'number') {
+        setPin(data.exif_lat, data.exif_lon, false, 'exif');
+      }
     } catch (err) {
       showError('Network error. Try again.');
     } finally {
@@ -462,8 +476,9 @@
     if (pickedGeo) {
       fd.append('lat', pickedGeo.lat);
       fd.append('lon', pickedGeo.lon);
-      // Accuracy only describes an un-moved GPS fix; a hand-placed pin is exact.
-      if (!pinManual && gpsGeo && gpsGeo.accuracy != null) {
+      // Accuracy only describes an un-moved GPS fix; a hand-placed pin is exact
+      // and an EXIF location carries no radius.
+      if (!pinManual && pinSource === 'gps' && gpsGeo && gpsGeo.accuracy != null) {
         fd.append('accuracy', gpsGeo.accuracy);
       }
     }

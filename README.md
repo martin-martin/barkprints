@@ -105,14 +105,15 @@ uv run python -m barkprints.web.adduser --list           # list usernames
 ```
 
 Once signed in, generating a poem reveals a **Save this** button and a small map. The
-pin starts at your device's GPS fix (if you allow location access), and you can **drag
-it to the exact tree** or tap the map to place it — handy when GPS is a few metres off
-or when you're saving a photo from your library that was taken elsewhere. Saving stores
-the photo, the generated text, a timestamp, and the chosen **location** (so you can find
-the tree again). Saved entries appear in the per-user **Saved** gallery, which plots
-every located entry on a map (markers open a photo + text popup) above the list of
-cards. The map uses a **vendored copy of Leaflet** (`static/vendor/leaflet/`, BSD-2);
-only the OpenStreetMap tile images are fetched at runtime.
+pin is seeded automatically — from the photo's own **GPS EXIF** tag if it has one
+(extracted server-side; authoritative for a library photo taken elsewhere), otherwise
+from your device's current location — and you can **drag it to the exact tree** or tap
+the map to place it. Saving stores the photo, the generated text, a timestamp, and the
+chosen **location** (so you can find the tree again). Saved entries appear in the
+per-user **Saved** gallery, which plots every located entry on a map (markers open a
+photo + text popup) above the list of cards. The map uses a **vendored copy of Leaflet**
+(`static/vendor/leaflet/`, BSD-2); only the OpenStreetMap tile images are fetched at
+runtime.
 
 Persisted data (a SQLite DB, uploaded photos, and the cookie-signing key) lives under
 `BARKPRINTS_DATA_DIR` (default `data/`). Auth uses bcrypt password hashes and a signed
@@ -120,7 +121,8 @@ session cookie; set `BARKPRINTS_SECRET_KEY` to keep sessions valid across restar
 (otherwise a random key is persisted in the data dir).
 
 API endpoints: `GET /api/corpora`, `POST /api/generate` (multipart: `image`, `corpus`,
-`alpha`, `max_words`), `POST /api/login` / `POST /api/logout` / `GET /api/me`,
+`alpha`, `max_words`; the response includes `exif_lat`/`exif_lon` when the photo carries
+GPS metadata), `POST /api/login` / `POST /api/logout` / `GET /api/me`,
 `POST /api/save` (multipart: `image`, `text`, `corpus`, `alpha`, `max_words`, optional
 `lat`/`lon`/`accuracy`), `GET /api/entries`, `GET /api/entries/{id}/image`,
 `DELETE /api/entries/{id}`, `GET /healthz`.
