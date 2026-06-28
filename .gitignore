@@ -43,6 +43,9 @@ htmlcov/
 # Temporary scripts
 create_sample_corpora.py
 
+# Local persisted data (SQLite DB, uploaded photos, signing key)
+data/
+
 # Large corpus files (commit small ones, ignore large custom ones)
 src/barkprints/corpora/*.npz
 !src/barkprints/corpora/nature.npz

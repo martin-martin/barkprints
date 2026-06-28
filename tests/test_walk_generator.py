@@ -135,3 +135,70 @@ def test_output_starts_with_capital():
     text = walker.generate(vec, corpus)
 
     assert text[0].isupper()
+
+
+def test_trigram_context_overrides_bigram():
+    """When a two-word context is known, the trigram table steers the next word."""
+    vocabulary = ["a", "b", "x", "y"]
+    word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
+    # Bigram of "b" alone would pick "x"; the "a b" trigram picks "y" instead.
+    bigram_table = {"a": [("b", 1)], "b": [("x", 1)]}
+    trigram_table = {"a b": [("y", 1)]}
+    corpus = Corpus(
+        name="tri",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["a"],
+        trigram_table=trigram_table,
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    # alpha=0 -> pure transitions; min_words high so it doesn't stop early.
+    walker = WalkGenerator(alpha=0.0, max_words=3, min_words=5)
+    words = walker.generate(vec, corpus).lower().split()
+
+    assert words == ["a", "b", "y"]
+
+
+def test_stops_at_sentence_end():
+    """The walk ends at a sentence-final token once past min_words."""
+    vocabulary = ["grows", "old", "the", "tree."]
+    word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
+    bigram_table = {"the": [("old", 1)], "old": [("tree.", 1)], "tree.": [("grows", 1)]}
+    corpus = Corpus(
+        name="stop",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["the"],
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=10, min_words=3)
+    text = walker.generate(vec, corpus)
+
+    # the -> old -> tree. : three words, then stop on the sentence-ending token.
+    assert text.split() == ["The", "old", "tree."]
+
+
+def test_min_words_floor_prevents_early_stop():
+    """A sentence end before min_words does not stop the walk."""
+    vocabulary = ["ab.", "cd", "de", "the"]
+    word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
+    bigram_table = {"the": [("ab.", 1)], "ab.": [("cd", 1)], "cd": [("de", 1)]}
+    corpus = Corpus(
+        name="floor",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["the"],
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=4, min_words=4)
+    words = walker.generate(vec, corpus).split()
+
+    # "ab." at position 2 is a sentence end but below min_words=4, so the walk
+    # continues to the full length.
+    assert len(words) == 4

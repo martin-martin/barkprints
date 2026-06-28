@@ -46,6 +46,17 @@ def test_bigram_table_accuracy(builder):
     assert the_bigrams.get("wind", 0) == 1
 
 
+def test_trigram_table_accuracy(builder):
+    """Trigram table should count two-word-context transitions."""
+    text = "The tree grows tall. The tree grows fast. The tree stands still."
+    corpus = builder.build_corpus(text, "test")
+
+    # Context "the tree" is followed by "grows" (2x) and "stands" (1x).
+    ctx = dict(corpus.trigram_table.get("the tree", []))
+    assert ctx.get("grows", 0) == 2
+    assert ctx.get("stands", 0) == 1
+
+
 def test_start_words_identified(builder):
     """Start words should be the first word of each sentence."""
     text = "The tree grows. Wind blows hard. The forest stands."
@@ -78,6 +89,7 @@ def test_round_trip_save_load(builder):
         assert loaded.vocabulary == corpus.vocabulary
         assert loaded.start_words == corpus.start_words
         assert loaded.bigram_table == corpus.bigram_table
+        assert loaded.trigram_table == corpus.trigram_table
         np.testing.assert_array_almost_equal(
             loaded.word_embeddings, corpus.word_embeddings
         )

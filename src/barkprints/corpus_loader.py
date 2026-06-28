@@ -65,6 +65,19 @@ class CorpusLoader:
             for word, pairs in bigram_raw.items()
         }
 
+        # Trigram table is optional (older corpora predate it).
+        trigram_table = None
+        if "trigram_json" in data:
+            trigram_value = data["trigram_json"].item()
+            if isinstance(trigram_value, bytes):
+                trigram_value = trigram_value.decode("utf-8")
+            trigram_raw = json.loads(trigram_value)
+            if trigram_raw:
+                trigram_table = {
+                    key: [(next_word, count) for next_word, count in pairs]
+                    for key, pairs in trigram_raw.items()
+                }
+
         metadata = data.get("metadata", np.array({}))[()]
         if not isinstance(metadata, dict):
             metadata = {}
@@ -76,6 +89,7 @@ class CorpusLoader:
             bigram_table=bigram_table,
             start_words=start_words,
             metadata=metadata,
+            trigram_table=trigram_table,
         )
 
     def list_available(self) -> list[str]:

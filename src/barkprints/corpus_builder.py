@@ -88,6 +88,21 @@ class CorpusBuilder:
         for word, nexts in bigram_counts.items():
             bigram_table[word] = [(next_word, count) for next_word, count in sorted(nexts.items())]
 
+        # Build trigram table keyed on a two-word context "prev current".
+        # Tokens never contain spaces (whitespace-split), so the space-joined
+        # key is unambiguous and reversible. The walk uses this for fluency and
+        # falls back to the bigram table at sentence starts and dead ends.
+        trigram_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for tokens in tokenized:
+            for i in range(len(tokens) - 2):
+                key = f"{tokens[i]} {tokens[i + 1]}"
+                trigram_counts[key][tokens[i + 2]] += 1
+
+        trigram_table: dict[str, list[tuple[str, int]]] = {}
+        for key, nexts in trigram_counts.items():
+            trigram_table[key] = [(next_word, count) for next_word, count in sorted(nexts.items())]
+        print(f"Trigram contexts: {len(trigram_table)}")
+
         # Identify start words (sorted for determinism)
         start_words = sorted(set(tokens[0] for tokens in tokenized if tokens))
         print(f"Start words: {len(start_words)}")
@@ -113,6 +128,7 @@ class CorpusBuilder:
             bigram_table=bigram_table,
             start_words=start_words,
             metadata=metadata,
+            trigram_table=trigram_table,
         )
 
     def build_from_file(
@@ -153,8 +169,9 @@ def save_corpus(corpus: Corpus, output_path: str | Path) -> None:
     """
     output_path = Path(output_path)
 
-    # Serialize bigram table as JSON
+    # Serialize bigram and trigram tables as JSON
     bigram_json = json.dumps(corpus.bigram_table)
+    trigram_json = json.dumps(corpus.trigram_table or {})
 
     print(f"Saving to {output_path}...")
     np.savez_compressed(
@@ -163,6 +180,7 @@ def save_corpus(corpus: Corpus, output_path: str | Path) -> None:
         word_embeddings=corpus.word_embeddings,
         start_words=np.array(corpus.start_words, dtype=object),
         bigram_json=np.array(bigram_json),
+        trigram_json=np.array(trigram_json),
         metadata=np.array(corpus.metadata),
     )
     print(f"Corpus saved: {len(corpus.vocabulary)} words, {corpus.word_embeddings.shape}")

@@ -12,7 +12,6 @@ dependencies = [
     "pillow>=10.0.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "sentence-transformers>=2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +19,15 @@ web = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
     "python-multipart>=0.0.9",
+    "bcrypt>=4.1.0",
+    "itsdangerous>=2.1.0",
+]
+# Only needed to BUILD new corpora (generates word embeddings).
+# Pulls in torch; not required to run the CLI or the PWA, which load
+# pre-built .npz corpora and use numpy/scipy only.
+build = [
+    "sentence-transformers>=2.2.0",
+    "torch>=2.0.0",
 ]
 
 [project.scripts]
@@ -41,4 +49,13 @@ packages = ["src/barkprints"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/barkprints/web/static" = "barkprints/web/static"
+
+# Install torch from the CPU-only wheel index (no NVIDIA CUDA libs).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 

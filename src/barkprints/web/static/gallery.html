@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1f3a2e" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/static/icon-192.png" />
+<title>Barkprints — Saved</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f3ec; --fg: #1c1c1c; --muted: #6a6a6a;
+    --accent: #1f3a2e; --card: #ffffff; --border: #e3ddd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14160f; --fg: #ece6d8; --muted: #9b9685;
+      --accent: #8fb39a; --card: #1d2018; --border: #2c3026;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--fg);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+            env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  a.nav { color: var(--accent); text-decoration: none; font-weight: 600; }
+  p.tag { margin: 0 0 20px; color: var(--muted); }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px; margin-bottom: 16px;
+  }
+  .card img {
+    width: 100%; border-radius: 12px; display: block; margin-bottom: 12px;
+    aspect-ratio: 4 / 3; object-fit: cover; background: var(--bg);
+  }
+  blockquote { margin: 0 0 12px; font-size: 19px; line-height: 1.4; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .meta a { color: var(--accent); text-decoration: none; }
+  .meta .corpus { text-transform: capitalize; }
+  .del {
+    margin-left: auto; appearance: none; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font: inherit; font-size: 13px;
+    padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .del:hover { color: #b3261e; border-color: #b3261e; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .error { color: #b3261e; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Saved barkprints</h1>
+    <a class="nav" href="/">＋ New</a>
+  </div>
+  <p class="tag">Your kept tree thoughts.</p>
+  <div id="list"></div>
+</main>
+<script>
+  const list = document.getElementById('list');
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function formatDate(iso) {
+    try {
+      return new Date(iso).toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch (e) { return iso; }
+  }
+
+  function mapLink(lat, lon) {
+    if (lat == null || lon == null) return '';
+    const la = Number(lat).toFixed(5), lo = Number(lon).toFixed(5);
+    const url = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=18/${la}/${lo}`;
+    return `<a href="${url}" target="_blank" rel="noopener">📍 ${la}, ${lo}</a>`;
+  }
+
+  async function del(id, btn) {
+    if (!confirm('Delete this saved barkprint?')) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/entries/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        btn.closest('.card').remove();
+        if (!list.querySelector('.card')) renderEmpty();
+      } else {
+        btn.disabled = false;
+      }
+    } catch (e) { btn.disabled = false; }
+  }
+
+  function renderEmpty() {
+    list.innerHTML = `<p class="empty">Nothing saved yet.<br><a class="nav" href="/">Make one →</a></p>`;
+  }
+
+  function render(entries) {
+    if (!entries.length) { renderEmpty(); return; }
+    list.innerHTML = '';
+    for (const e of entries) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <img loading="lazy" src="${e.image_url}" alt="Saved bark photo" />
+        <blockquote>${escapeHtml(e.text)}</blockquote>
+        <div class="meta">
+          <span>${escapeHtml(formatDate(e.created_at))}</span>
+          <span class="corpus">${escapeHtml(e.corpus || '')}</span>
+          ${mapLink(e.lat, e.lon)}
+          <button class="del" type="button">Delete</button>
+        </div>`;
+      card.querySelector('.del').addEventListener('click', (ev) => del(e.id, ev.target));
+      list.appendChild(card);
+    }
+  }
+
+  async function load() {
+    try {
+      const res = await fetch('/api/entries');
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      if (!res.ok) { list.innerHTML = '<p class="error">Could not load saved entries.</p>'; return; }
+      const data = await res.json();
+      render(data.entries || []);
+    } catch (err) {
+      list.innerHTML = '<p class="error">Network error.</p>';
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

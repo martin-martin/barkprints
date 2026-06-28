@@ -5,6 +5,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
+# Persisted data (SQLite DB, uploaded photos, signing key) lives here; mount a
+# volume at this path so it survives image rebuilds.
+ENV BARKPRINTS_DATA_DIR=/app/data
 
 # Only the runtime deps of the web app. sentence-transformers/torch are used
 # solely by the offline corpus_builder, never at request time, so they are
@@ -15,7 +18,9 @@ RUN pip install --no-cache-dir \
     python-multipart \
     pillow \
     numpy \
-    scipy
+    scipy \
+    bcrypt \
+    itsdangerous
 
 COPY src ./src
 

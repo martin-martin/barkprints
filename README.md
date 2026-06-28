@@ -92,7 +92,34 @@ uv run barkprints-web --host 0.0.0.0 --port 8000   # expose to your LAN / a reve
 
 Open the URL on your phone and "Add to Home Screen" for an app-like experience. The UI lets you pick a corpus, set the **bark influence** (`alpha`) and **max words**, and take or upload a photo.
 
-API endpoints: `GET /api/corpora`, `POST /api/generate` (multipart: `image`, `corpus`, `alpha`, `max_words`), `GET /healthz`.
+### Accounts & saving
+
+The app is private: every page and API route (except `/login` and health) requires a
+logged-in session. There is **no signup** — create accounts from the command line:
+
+```bash
+uv run python -m barkprints.web.adduser alice            # prompts for a password
+uv run python -m barkprints.web.adduser alice --password s3cret   # non-interactive
+uv run python -m barkprints.web.adduser alice --update   # change an existing password
+uv run python -m barkprints.web.adduser --list           # list usernames
+```
+
+Once signed in, generating a poem reveals a **Save this** button. Saving stores the
+photo, the generated text, a timestamp, and — if you allow location access — the
+**geolocation** captured when you picked the photo (so you can find the tree again).
+Saved entries appear in the per-user **Saved** gallery, each linking to a map and
+offering deletion.
+
+Persisted data (a SQLite DB, uploaded photos, and the cookie-signing key) lives under
+`BARKPRINTS_DATA_DIR` (default `data/`). Auth uses bcrypt password hashes and a signed
+session cookie; set `BARKPRINTS_SECRET_KEY` to keep sessions valid across restarts
+(otherwise a random key is persisted in the data dir).
+
+API endpoints: `GET /api/corpora`, `POST /api/generate` (multipart: `image`, `corpus`,
+`alpha`, `max_words`), `POST /api/login` / `POST /api/logout` / `GET /api/me`,
+`POST /api/save` (multipart: `image`, `text`, `corpus`, `alpha`, `max_words`, optional
+`lat`/`lon`/`accuracy`), `GET /api/entries`, `GET /api/entries/{id}/image`,
+`DELETE /api/entries/{id}`, `GET /healthz`.
 
 ## Deployment (Docker)
 
@@ -101,12 +128,20 @@ Production runs at **https://barkprints.quest** on a VPS that also hosts another
 barkprints does **not** run its own reverse proxy — it sits behind the existing Caddy:
 
 - `Dockerfile` — FastAPI/uvicorn app. It installs only the runtime deps
-  (`fastapi`, `uvicorn`, `python-multipart`, `pillow`, `numpy`, `scipy`).
-  `sentence-transformers`/`torch` are deliberately **excluded**: they're only needed to
-  *build* corpora, never to serve requests.
+  (`fastapi`, `uvicorn`, `python-multipart`, `pillow`, `numpy`, `scipy`, `bcrypt`,
+  `itsdangerous`). `sentence-transformers`/`torch` are deliberately **excluded**: they're
+  only needed to *build* corpora, never to serve requests.
 - `docker-compose.yml` — runs the `barkprints` container, bound to `127.0.0.1:5051` for
   local checks, and attached to the **external** `soundmap_web` Docker network so Caddy
-  can reach it as `http://barkprints:8000`.
+  can reach it as `http://barkprints:8000`. A named volume `barkprints_data` is mounted at
+  `/app/data` to persist the SQLite DB, uploaded photos, and the signing key across
+  rebuilds; `BARKPRINTS_COOKIE_SECURE=1` is set because the app is only reached over HTTPS.
+
+Create accounts inside the running container (no signup flow exists):
+
+```bash
+docker compose exec barkprints python -m barkprints.web.adduser alice
+```
 - The site block (`barkprints.quest, www.barkprints.quest` → `reverse_proxy
   barkprints:8000`, with www→apex redirect) lives in the **soundmap project's
   `Caddyfile`**, not here.

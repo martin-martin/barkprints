@@ -47,6 +47,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--min-words",
+        type=int,
+        default=5,
+        help="Minimum words before the walk may stop at a sentence end (default: 5)",
+    )
+
+    parser.add_argument(
         "--list-corpora", action="store_true", help="List available corpora and exit"
     )
 
@@ -78,7 +85,9 @@ Examples:
         sys.exit(1)
 
     # Generate text for each image
-    generator = TextGenerator(alpha=args.alpha, max_words=args.max_words)
+    generator = TextGenerator(
+        alpha=args.alpha, max_words=args.max_words, min_words=args.min_words
+    )
     error_occurred = False
 
     for image_path in args.images:

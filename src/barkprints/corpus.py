@@ -14,6 +14,7 @@ class Corpus:
         bigram_table: dict[str, list[tuple[str, int]]],
         start_words: list[str],
         metadata: dict | None = None,
+        trigram_table: dict[str, list[tuple[str, int]]] | None = None,
     ):
         """Initialize corpus.
 
@@ -24,6 +25,9 @@ class Corpus:
             bigram_table: word -> [(next_word, count), ...]
             start_words: Words that begin sentences
             metadata: Additional metadata (theme, source, etc.)
+            trigram_table: "prev current" -> [(next_word, count), ...]. Optional;
+                when present the walk uses two-word context for more fluent output.
+                Older corpora built before trigrams simply leave this None.
         """
         self.name = name
         self.vocabulary = vocabulary
@@ -31,6 +35,7 @@ class Corpus:
         self.bigram_table = bigram_table
         self.start_words = start_words
         self.metadata = metadata or {}
+        self.trigram_table = trigram_table
 
         # Validate
         if len(vocabulary) != len(word_embeddings):

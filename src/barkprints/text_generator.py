@@ -8,15 +8,18 @@ from .walk_generator import WalkGenerator
 class TextGenerator:
     """Generate deterministic text from images via bigram walk."""
 
-    def __init__(self, alpha: float = 0.5, max_words: int = 20):
+    def __init__(self, alpha: float = 0.5, max_words: int = 20, min_words: int = 5):
         """Initialize text generator.
 
         Args:
-            alpha: Walk blend factor (0.0 = bigram coherence, 1.0 = bark personality)
+            alpha: Walk blend factor (0.0 = n-gram coherence, 1.0 = bark personality)
             max_words: Maximum words in generated output
+            min_words: Minimum words before the walk may stop at a sentence end
         """
         self.corpus_loader = CorpusLoader()
-        self.walk_generator = WalkGenerator(alpha=alpha, max_words=max_words)
+        self.walk_generator = WalkGenerator(
+            alpha=alpha, max_words=max_words, min_words=min_words
+        )
 
     def generate(self, image_path: str, corpus_name: str) -> str:
         """Generate text from an image using specified corpus.

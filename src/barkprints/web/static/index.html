@@ -50,7 +50,20 @@
     font-size: 28px;
     letter-spacing: -0.01em;
   }
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .topbar nav { display: flex; gap: 14px; white-space: nowrap; }
+  .topbar nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 14px; }
   p.tag { margin: 0 0 24px; color: var(--muted); }
+  .save-row { margin-top: 16px; display: none; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .save-row.show { display: flex; }
+  .save-row button {
+    appearance: none; border: 1px solid var(--accent); background: var(--accent);
+    color: white; font: 600 15px/1.2 inherit; padding: 12px 18px;
+    border-radius: 12px; cursor: pointer;
+  }
+  .save-row button:disabled { opacity: 0.5; cursor: progress; }
+  .geo { color: var(--muted); font-size: 13px; }
+  .saved-ok { color: var(--accent); font-size: 14px; font-weight: 600; }
   .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -141,7 +154,13 @@
 </head>
 <body>
 <main>
-  <h1>🌳 Barkprints 🌲</h1>
+  <div class="topbar">
+    <h1>🌳 Barkprints 🌲</h1>
+    <nav>
+      <a href="/gallery">Saved</a>
+      <a href="#" id="logout">Sign out</a>
+    </nav>
+  </div>
   <p class="tag">Thoughts written in tree bark.</p>
 
   <div class="card">
@@ -170,8 +189,14 @@
     <div id="preview" class="preview"><img id="preview-img" alt="" /></div>
   </div>
 
-  <div class="card result" id="result" aria-live="polite">
-    <p style="color: var(--muted); margin: 0;">Pick an image to read tree thoughts.</p>
+  <div class="card result">
+    <div id="result" aria-live="polite">
+      <p style="color: var(--muted); margin: 0;">Pick an image to read tree thoughts.</p>
+    </div>
+    <div class="save-row" id="save-row">
+      <button id="save-btn" type="button">Save this</button>
+      <span class="geo" id="geo-status"></span>
+    </div>
   </div>
 
   <footer>Add to home screen for an app-like experience.</footer>
@@ -189,6 +214,17 @@
   const preview = document.getElementById('preview');
   const previewImg = document.getElementById('preview-img');
   const resultEl = document.getElementById('result');
+  const saveRow = document.getElementById('save-row');
+  const saveBtn = document.getElementById('save-btn');
+  const geoStatus = document.getElementById('geo-status');
+  const logoutLink = document.getElementById('logout');
+
+  // The image currently shown, the text generated for it, and the most recent
+  // geolocation fix — captured when the photo is picked so "Save" can persist
+  // them together.
+  let currentFile = null;
+  let currentText = null;
+  let lastGeo = null;
 
   const lastSettings = {
     corpus: localStorage.getItem('bp-corpus') || 'nature',
@@ -203,6 +239,7 @@
   async function loadCorpora() {
     try {
       const res = await fetch('/api/corpora');
+      if (res.status === 401) { window.location.href = '/login'; return; }
       const data = await res.json();
       corpusSelect.innerHTML = '';
       for (const c of data.corpora) {
@@ -253,11 +290,39 @@
     resultEl.innerHTML = `<blockquote>${escapeHtml(text)}</blockquote>`;
   }
 
+  function requestLocation() {
+    lastGeo = null;
+    if (!('geolocation' in navigator)) {
+      geoStatus.textContent = 'Location unavailable on this device.';
+      return;
+    }
+    geoStatus.textContent = '📍 Locating…';
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        lastGeo = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        geoStatus.textContent =
+          `📍 ${lastGeo.lat.toFixed(5)}, ${lastGeo.lon.toFixed(5)} (±${Math.round(lastGeo.accuracy)}m)`;
+      },
+      () => { geoStatus.textContent = 'Location off — will save without it.'; },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }
+
   async function onFile(file) {
     if (!file) return;
+    currentFile = file;
+    currentText = null;
+    saveRow.classList.remove('show');
     const url = URL.createObjectURL(file);
     previewImg.src = url;
     preview.classList.add('has-image');
+
+    // Grab the location now — the user is standing at the tree.
+    requestLocation();
 
     const fd = new FormData();
     fd.append('image', file);
@@ -269,19 +334,65 @@
     captureBtn.disabled = uploadBtn.disabled = true;
     try {
       const res = await fetch('/api/generate', { method: 'POST', body: fd });
+      if (res.status === 401) { window.location.href = '/login'; return; }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         showError(err.detail || `Server error (${res.status})`);
         return;
       }
       const data = await res.json();
+      currentText = data.text;
       renderText(data.text);
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save this';
+      saveRow.classList.add('show');
     } catch (err) {
       showError('Network error. Try again.');
     } finally {
       captureBtn.disabled = uploadBtn.disabled = false;
     }
   }
+
+  async function onSave() {
+    if (!currentFile || !currentText) return;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    const fd = new FormData();
+    fd.append('image', currentFile);
+    fd.append('text', currentText);
+    fd.append('corpus', corpusSelect.value);
+    fd.append('alpha', alphaInput.value);
+    fd.append('max_words', maxWordsInput.value);
+    if (lastGeo) {
+      fd.append('lat', lastGeo.lat);
+      fd.append('lon', lastGeo.lon);
+      fd.append('accuracy', lastGeo.accuracy);
+    }
+    try {
+      const res = await fetch('/api/save', { method: 'POST', body: fd });
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save this';
+        geoStatus.innerHTML = `<span class="error">${escapeHtml(err.detail || 'Save failed')}</span>`;
+        return;
+      }
+      saveBtn.textContent = 'Saved ✓';
+      geoStatus.innerHTML = '<a href="/gallery" class="saved-ok">View in Saved →</a>';
+    } catch (err) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save this';
+      geoStatus.innerHTML = '<span class="error">Network error. Try again.</span>';
+    }
+  }
+
+  saveBtn.addEventListener('click', onSave);
+  logoutLink.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try { await fetch('/api/logout', { method: 'POST' }); } catch (err) {}
+    window.location.href = '/login';
+  });
 
   loadCorpora();
 

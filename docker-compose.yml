@@ -11,6 +11,15 @@ services:
       - "127.0.0.1:5051:8000"
     networks:
       - soundmap_web
+    environment:
+      # Secure cookies are safe here: the app is only ever reached over HTTPS
+      # via Caddy. Set BARKPRINTS_SECRET_KEY to a fixed value to keep sessions
+      # valid across container recreation (otherwise a key is persisted in the
+      # data volume automatically).
+      BARKPRINTS_COOKIE_SECURE: "1"
+    volumes:
+      # SQLite DB + uploaded photos + signing key. Survives `up -d --build`.
+      - barkprints_data:/app/data
     restart: unless-stopped
 
 # The reverse proxy (and its 80/443 binding) already lives in the soundmap
@@ -18,3 +27,6 @@ services:
 networks:
   soundmap_web:
     external: true
+
+volumes:
+  barkprints_data:
