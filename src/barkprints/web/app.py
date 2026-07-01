@@ -33,6 +33,7 @@ from ..corpus import Corpus
 from ..corpus_loader import CorpusLoader
 from ..feature_extractor import ImageFeatureExtractor
 from ..walk_generator import WalkGenerator
+from .exif import extract_gps_latlon
 from .store import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -241,7 +242,14 @@ def create_app() -> FastAPI:
             except Exception as exc:
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        return JSONResponse({"corpus": corpus, "text": text})
+        # Where the photo says it was taken, if it carries GPS EXIF. The client
+        # uses this to seed the location pin — authoritative for library uploads.
+        result = {"corpus": corpus, "text": text}
+        gps = extract_gps_latlon(data)
+        if gps is not None:
+            result["exif_lat"], result["exif_lon"] = gps
+
+        return JSONResponse(result)
 
     # -- saved entries ---------------------------------------------------
 
