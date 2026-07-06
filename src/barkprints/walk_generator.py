@@ -85,6 +85,26 @@ class WalkGenerator:
     # toward the next-most-similar fresh word instead of circling favorites.
     WORD_REUSE_DECAY = 0.5
 
+    @staticmethod
+    def _percentile_ranks(values: np.ndarray) -> np.ndarray:
+        """Map values to percentile ranks in (0, 1); ties share their mean rank.
+
+        Raw transition probabilities and bark cosine similarities live on very
+        different scales (a dominant follower has probability ~1.0 while
+        similarities cluster in a narrow band), which made alpha behave like a
+        cliff instead of a dial. Ranking both signals within the candidate set
+        puts them on the same scale, so blending is meaningful at every alpha.
+        """
+        n = len(values)
+        ranks = np.empty(n)
+        ranks[np.argsort(values, kind="stable")] = np.arange(n, dtype=float)
+        for value in np.unique(values):
+            mask = values == value
+            ranks[mask] = ranks[mask].mean()
+        # (rank + 0.5) / n keeps every rank strictly positive, so the reuse
+        # decay still differentiates candidates at the bottom of the order.
+        return (ranks + 0.5) / n
+
     def _score_candidates(
         self,
         candidates: list[tuple[str, int]],
@@ -93,11 +113,14 @@ class WalkGenerator:
         vocab_index: dict[str, int],
         word_use: dict[str, int],
     ) -> str:
-        """Score bigram candidates by blending transition probability and bark similarity.
+        """Score candidates by blending transition frequency and bark similarity.
+
+        Both signals are converted to percentile ranks within the candidate
+        set before blending, so alpha trades them off smoothly.
 
         Args:
             candidates: List of (next_word, count) tuples
-            feature_vector: Current (possibly rolled) feature vector
+            feature_vector: Current steering feature vector
             corpus: The corpus
             vocab_index: word -> row index into corpus.word_embeddings
             word_use: How often each word already appears in this walk
@@ -105,29 +128,23 @@ class WalkGenerator:
         Returns:
             Selected next word
         """
-        total_count = sum(count for _, count in candidates)
-
-        best_score = -float("inf")
-        best_word = candidates[0][0]
-
-        for word, count in candidates:
-            transition_prob = count / total_count
+        counts = np.array([count for _, count in candidates], dtype=float)
+        sims = np.full(len(candidates), -1.0)
+        for k, (word, _) in enumerate(candidates):
             idx = vocab_index.get(word)
             if idx is not None:
-                sim = self._cosine_similarities(
+                sims[k] = self._cosine_similarities(
                     feature_vector, corpus.word_embeddings[idx : idx + 1]
                 )[0]
-                bark_sim = (sim + 1) / 2  # Normalize [-1,1] to [0,1]
-            else:
-                bark_sim = 0.0
 
-            score = (1 - self.alpha) * transition_prob + self.alpha * bark_sim
-            score *= self.WORD_REUSE_DECAY ** word_use.get(word, 0)
-            if score > best_score:
-                best_score = score
-                best_word = word
+        coherence_rank = self._percentile_ranks(counts)
+        bark_rank = self._percentile_ranks(sims)
+        scores = (1 - self.alpha) * coherence_rank + self.alpha * bark_rank
+        scores *= np.array(
+            [self.WORD_REUSE_DECAY ** word_use.get(word, 0) for word, _ in candidates]
+        )
 
-        return best_word
+        return candidates[int(np.argmax(scores))][0]
 
     def generate(self, feature_vector: np.ndarray, corpus: Corpus) -> str:
         """Generate text by walking the bigram model steered by the feature vector.

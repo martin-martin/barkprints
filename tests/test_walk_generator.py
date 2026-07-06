@@ -261,6 +261,45 @@ def test_word_reuse_decay_prefers_fresh_words():
     # used, so "c" is the only fresh candidate. c -> d: b has been used once,
     # so the fresh "d" wins.
     assert words[:5] == ["a", "b", "a", "c", "d"]
+
+
+def test_alpha_is_a_smooth_dial():
+    """Rank normalization lets alpha trade the signals off around 0.5 even
+    when raw similarities differ far less than raw transition probabilities."""
+    vocabulary = ["common", "rare"]
+    # Probe vector [1, 0, 0]: "rare" is only slightly more bark-similar
+    # (cos ~0.90 vs ~0.85) while "common" is 3x more probable. With raw
+    # scores the probability gap swamps the similarity gap at any alpha
+    # below ~0.9; with ranks the flip happens at alpha = 0.5.
+    word_embeddings = np.array(
+        [
+            [0.85, 0.527, 0.0],
+            [0.90, 0.436, 0.0],
+        ]
+    )
+    corpus = Corpus(
+        name="dial",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table={"x": [("common", 3), ("rare", 1)]},
+        start_words=["x"],
+    )
+    vec = np.array([1.0, 0.0, 0.0])
+    candidates = corpus.bigram_table["x"]
+    vocab_index = {"common": 0, "rare": 1}
+
+    coherent = WalkGenerator(alpha=0.4)._score_candidates(
+        candidates, vec, corpus, vocab_index, {}
+    )
+    barky = WalkGenerator(alpha=0.6)._score_candidates(
+        candidates, vec, corpus, vocab_index, {}
+    )
+
+    assert coherent == "common"
+    assert barky == "rare"
+
+
+def test_min_words_floor_prevents_early_stop():
     """A sentence end before min_words does not stop the walk."""
     vocabulary = ["ab.", "cd", "de", "the"]
     word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
