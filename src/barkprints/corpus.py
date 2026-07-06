@@ -15,6 +15,7 @@ class Corpus:
         start_words: list[str],
         metadata: dict | None = None,
         trigram_table: dict[str, list[tuple[str, int]]] | None = None,
+        end_words: dict[str, tuple[int, int]] | None = None,
     ):
         """Initialize corpus.
 
@@ -28,6 +29,11 @@ class Corpus:
             trigram_table: "prev current" -> [(next_word, count), ...]. Optional;
                 when present the walk uses two-word context for more fluent output.
                 Older corpora built before trigrams simply leave this None.
+            end_words: word -> (times it ended a sentence, total occurrences).
+                Present on corpora with cleaned tokenization, where punctuation
+                is stripped from tokens and the walk decides sentence ends from
+                these statistics. Legacy corpora leave this None and signal
+                sentence ends via punctuation attached to tokens.
         """
         self.name = name
         self.vocabulary = vocabulary
@@ -36,6 +42,7 @@ class Corpus:
         self.start_words = start_words
         self.metadata = metadata or {}
         self.trigram_table = trigram_table
+        self.end_words = end_words
 
         # Validate
         if len(vocabulary) != len(word_embeddings):

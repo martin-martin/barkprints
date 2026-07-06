@@ -1,13 +1,18 @@
 """Build corpora from text with word-level embeddings and bigram tables."""
 
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from .corpus import Corpus
+
+# A word is a maximal alphanumeric run, optionally joined by internal
+# apostrophes or hyphens ("don't", "old-growth"). Underscores count as
+# punctuation so Gutenberg italic markup (_word_) cleans away.
+WORD_RE = re.compile(r"[^\W_]+(?:['’\-][^\W_]+)*")
 
 
 class CorpusBuilder:
@@ -19,12 +24,20 @@ class CorpusBuilder:
         Args:
             model_name: Name of sentence-transformer model to use
         """
+        # Imported lazily so that the module (save_corpus, WORD_RE) stays
+        # usable without the 'build' extra installed.
+        from sentence_transformers import SentenceTransformer
+
         print(f"Loading sentence transformer model: {model_name}...")
         self.model = SentenceTransformer(model_name)
         print("Model loaded.")
 
     def tokenize(self, sentences: list[str]) -> list[list[str]]:
-        """Split sentences into lowercase words, preserving attached punctuation.
+        """Split sentences into lowercase word tokens, dropping punctuation.
+
+        Punctuation no longer stays attached to tokens, so 'fishes,' and
+        'fishes' become one vocabulary entry; whether a word can end a
+        sentence is tracked separately as end-word statistics.
 
         Args:
             sentences: List of sentences
@@ -34,7 +47,7 @@ class CorpusBuilder:
         """
         tokenized = []
         for sentence in sentences:
-            words = sentence.lower().split()
+            words = WORD_RE.findall(sentence.lower())
             if words:
                 tokenized.append(words)
         return tokenized
@@ -107,6 +120,19 @@ class CorpusBuilder:
         start_words = sorted(set(tokens[0] for tokens in tokenized if tokens))
         print(f"Start words: {len(start_words)}")
 
+        # End-word statistics: with punctuation stripped from tokens, the walk
+        # decides sentence ends from how often a word closed a sentence here.
+        end_counts: dict[str, int] = defaultdict(int)
+        total_counts: dict[str, int] = defaultdict(int)
+        for tokens in tokenized:
+            for token in tokens:
+                total_counts[token] += 1
+            end_counts[tokens[-1]] += 1
+        end_words = {
+            word: (end_counts[word], total_counts[word]) for word in sorted(end_counts)
+        }
+        print(f"End words: {len(end_words)}")
+
         # Embed each vocabulary word
         print("Generating word embeddings...")
         word_embeddings = self.model.encode(
@@ -129,6 +155,7 @@ class CorpusBuilder:
             start_words=start_words,
             metadata=metadata,
             trigram_table=trigram_table,
+            end_words=end_words,
         )
 
     def build_from_file(
@@ -169,9 +196,10 @@ def save_corpus(corpus: Corpus, output_path: str | Path) -> None:
     """
     output_path = Path(output_path)
 
-    # Serialize bigram and trigram tables as JSON
+    # Serialize bigram/trigram tables and end-word statistics as JSON
     bigram_json = json.dumps(corpus.bigram_table)
     trigram_json = json.dumps(corpus.trigram_table or {})
+    end_json = json.dumps(corpus.end_words or {})
 
     print(f"Saving to {output_path}...")
     np.savez_compressed(
@@ -181,6 +209,7 @@ def save_corpus(corpus: Corpus, output_path: str | Path) -> None:
         start_words=np.array(corpus.start_words, dtype=object),
         bigram_json=np.array(bigram_json),
         trigram_json=np.array(trigram_json),
+        end_json=np.array(end_json),
         metadata=np.array(corpus.metadata),
     )
     print(f"Corpus saved: {len(corpus.vocabulary)} words, {corpus.word_embeddings.shape}")

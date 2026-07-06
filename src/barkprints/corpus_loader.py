@@ -78,6 +78,20 @@ class CorpusLoader:
                     for key, pairs in trigram_raw.items()
                 }
 
+        # End-word statistics are optional (legacy corpora keep punctuation
+        # attached to tokens and signal sentence ends that way instead).
+        end_words = None
+        if "end_json" in data:
+            end_value = data["end_json"].item()
+            if isinstance(end_value, bytes):
+                end_value = end_value.decode("utf-8")
+            end_raw = json.loads(end_value)
+            if end_raw:
+                end_words = {
+                    word: (end_count, total_count)
+                    for word, (end_count, total_count) in end_raw.items()
+                }
+
         metadata = data.get("metadata", np.array({}))[()]
         if not isinstance(metadata, dict):
             metadata = {}
@@ -90,6 +104,7 @@ class CorpusLoader:
             start_words=start_words,
             metadata=metadata,
             trigram_table=trigram_table,
+            end_words=end_words,
         )
 
     def list_available(self) -> list[str]:

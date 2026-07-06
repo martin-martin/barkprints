@@ -12,7 +12,13 @@ _TRAILING = "\"')]}»”’"
 class WalkGenerator:
     """Generate text via a deterministic n-gram walk steered by image features."""
 
-    def __init__(self, alpha: float = 0.5, max_words: int = 20, min_words: int = 5):
+    def __init__(
+        self,
+        alpha: float = 0.5,
+        max_words: int = 20,
+        min_words: int = 5,
+        end_threshold: float = 0.5,
+    ):
         """Initialize walk generator.
 
         Args:
@@ -20,6 +26,9 @@ class WalkGenerator:
             max_words: Maximum number of words in output.
             min_words: Don't stop at a sentence end before this many words, so the
                 walk can't terminate after one or two tokens.
+            end_threshold: On corpora with end-word statistics, a word may end
+                the poem when it closed a sentence in at least this fraction of
+                its corpus occurrences.
         """
         if not (0.0 <= alpha <= 1.0):
             raise ValueError("alpha must be between 0.0 and 1.0 inclusive")
@@ -27,9 +36,12 @@ class WalkGenerator:
             raise ValueError("max_words must be >= 1")
         if min_words < 1:
             raise ValueError("min_words must be >= 1")
+        if not (0.0 < end_threshold <= 1.0):
+            raise ValueError("end_threshold must be in (0.0, 1.0]")
         self.alpha = alpha
         self.max_words = max_words
         self.min_words = min_words
+        self.end_threshold = end_threshold
 
     @staticmethod
     def _is_sentence_end(word: str) -> bool:
@@ -42,6 +54,22 @@ class WalkGenerator:
         if not stripped or stripped[-1] not in ".!?":
             return False
         return sum(c.isalpha() for c in stripped) >= 2
+
+    def _ends_sentence(self, word: str, corpus: Corpus) -> bool:
+        """Whether the walk may stop on this word.
+
+        Cleaned corpora carry end-word statistics (punctuation is stripped from
+        tokens): a word qualifies when it closed a sentence in at least
+        end_threshold of its occurrences. Legacy corpora signal sentence ends
+        via punctuation attached to the token.
+        """
+        if corpus.end_words is not None:
+            entry = corpus.end_words.get(word)
+            if entry is None:
+                return False
+            end_count, total_count = entry
+            return total_count > 0 and end_count / total_count >= self.end_threshold
+        return self._is_sentence_end(word)
 
     @staticmethod
     def _next_candidates(
@@ -221,11 +249,22 @@ class WalkGenerator:
             word_use[current_word] = word_use.get(current_word, 0) + 1
 
             # Stop at a natural sentence end once we have enough words.
-            if len(words) >= self.min_words and self._is_sentence_end(current_word):
+            if len(words) >= self.min_words and self._ends_sentence(current_word, corpus):
+                natural_stop = True
                 break
+        else:
+            natural_stop = self.max_words == 1 or self._ends_sentence(
+                current_word, corpus
+            )
 
         # Post-processing: capitalize first character
         text = " ".join(words)
         text = text[0].upper() + text[1:] if text else ""
+
+        # Cleaned corpora produce bare words; close the poem with a period
+        # when it ended on a natural sentence end, an ellipsis when it was
+        # cut off at max_words mid-phrase.
+        if corpus.end_words is not None and text:
+            text += "." if natural_stop else "…"
 
         return text

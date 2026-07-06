@@ -299,6 +299,52 @@ def test_alpha_is_a_smooth_dial():
     assert barky == "rare"
 
 
+def test_cleaned_corpus_stops_on_end_word_and_adds_period():
+    """With end-word statistics, the walk stops on a frequent sentence ender
+    and closes the poem with a period."""
+    vocabulary = ["grows", "old", "the", "tree"]
+    word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
+    corpus = Corpus(
+        name="clean-stop",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table={"the": [("old", 1)], "old": [("tree", 1)], "tree": [("grows", 1)]},
+        start_words=["the"],
+        # "tree" ends most of its occurrences; "old" almost never does.
+        end_words={"tree": (3, 4), "old": (1, 10)},
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=10, min_words=3)
+    text = walker.generate(vec, corpus)
+
+    assert text == "The old tree."
+
+
+def test_cleaned_corpus_cut_off_gets_ellipsis():
+    """A walk that hits max_words mid-phrase trails off with an ellipsis."""
+    vocabulary = ["a", "b", "c", "d"]
+    word_embeddings = np.random.RandomState(0).randn(4, 384)
+    corpus = Corpus(
+        name="clean-cut",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table={"a": [("b", 1)], "b": [("c", 1)], "c": [("d", 1)]},
+        start_words=["a"],
+        end_words={},
+    )
+    # Empty end_words dict still means "cleaned corpus" semantics at the
+    # Corpus level, but the loader normalizes {} to None; construct directly
+    # to exercise the cleaned path.
+    corpus.end_words = {}
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=3, min_words=2)
+    text = walker.generate(vec, corpus)
+
+    assert text == "A b c…"
+
+
 def test_min_words_floor_prevents_early_stop():
     """A sentence end before min_words does not stop the walk."""
     vocabulary = ["ab.", "cd", "de", "the"]
