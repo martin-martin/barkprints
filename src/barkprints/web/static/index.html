@@ -293,8 +293,10 @@
 
   captureBtn.addEventListener('click', () => captureInput.click());
   uploadBtn.addEventListener('click', () => uploadInput.click());
-  captureInput.addEventListener('change', e => onFile(e.target.files[0]));
-  uploadInput.addEventListener('change', e => onFile(e.target.files[0]));
+  // Clear the input after reading so picking the same photo again still
+  // fires `change` (otherwise re-selecting an identical file does nothing).
+  captureInput.addEventListener('change', e => { onFile(e.target.files[0]); e.target.value = ''; });
+  uploadInput.addEventListener('change', e => { onFile(e.target.files[0]); e.target.value = ''; });
 
   function showError(msg) {
     resultEl.innerHTML = `<p class="error">${escapeHtml(msg)}</p>`;

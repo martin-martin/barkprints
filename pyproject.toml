@@ -21,6 +21,8 @@ web = [
     "python-multipart>=0.0.9",
     "bcrypt>=4.1.0",
     "itsdangerous>=2.1.0",
+    # HEIC/HEIF decoding (iPhone photos) for generation, EXIF, and thumbnails.
+    "pillow-heif>=0.16.0",
 ]
 # Only needed to BUILD new corpora (generates word embeddings).
 # Pulls in torch; not required to run the CLI or the PWA, which load

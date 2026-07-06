@@ -75,6 +75,7 @@ class Entry:
             "lon": self.lon,
             "accuracy": self.accuracy,
             "image_url": f"/api/entries/{self.id}/image",
+            "thumb_url": f"/api/entries/{self.id}/thumb",
         }
 
 
@@ -90,8 +91,10 @@ class Store:
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = Path(data_dir)
         self.uploads_dir = self.data_dir / "uploads"
+        self.thumbs_dir = self.data_dir / "thumbs"
         self.db_path = self.data_dir / "barkprints.db"
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
+        self.thumbs_dir.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA)

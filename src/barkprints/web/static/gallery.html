@@ -8,6 +8,8 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/static/icon-192.png" />
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="/static/vendor/markercluster/MarkerCluster.css" />
+<link rel="stylesheet" href="/static/vendor/markercluster/MarkerCluster.Default.css" />
 <title>Barkprints — Saved</title>
 <style>
   :root {
@@ -55,18 +57,30 @@
   .empty { color: var(--muted); text-align: center; padding: 40px 0; }
   .error { color: #b3261e; }
   #map {
-    height: 280px; width: 100%; border-radius: 16px; margin-bottom: 16px;
+    height: min(45vh, 360px); width: 100%; border-radius: 16px; margin-bottom: 16px;
     border: 1px solid var(--border); display: none; background: var(--card);
   }
   #map.show { display: block; }
-  /* Keep Leaflet popups legible against the app's dark theme. */
+  /* Popups are compact previews (thumbnail + clamped text) so they always fit
+     inside the map on a small phone screen; the "Show ↓" link jumps to the
+     full card in the list below. Colors are fixed, not theme vars, because
+     the popup bubble stays white even in dark mode. */
   .leaflet-popup-content { margin: 10px 12px; font: inherit; }
   .leaflet-popup-content img {
-    width: 100%; border-radius: 8px; display: block; margin-bottom: 8px;
-    aspect-ratio: 4 / 3; object-fit: cover;
+    width: 100%; height: 84px; border-radius: 8px; display: block;
+    margin-bottom: 8px; object-fit: cover;
   }
-  .leaflet-popup-content .pq { font-size: 14px; line-height: 1.35; margin: 0 0 4px; }
-  .leaflet-popup-content .pd { color: #6a6a6a; font-size: 12px; }
+  .leaflet-popup-content .pq {
+    font-size: 13px; line-height: 1.35; margin: 0 0 6px;
+    display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3; overflow: hidden;
+  }
+  .leaflet-popup-content .pd {
+    color: #6a6a6a; font-size: 12px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px;
+  }
+  .leaflet-popup-content .pd a { color: #1f3a2e; text-decoration: none; font-weight: 600; }
+  .card.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -80,6 +94,7 @@
   <div id="list"></div>
 </main>
 <script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/vendor/markercluster/leaflet.markercluster.js"></script>
 <script src="/static/barkmap.js"></script>
 <script>
   const list = document.getElementById('list');
@@ -99,11 +114,10 @@
     } catch (e) { return iso; }
   }
 
-  function mapLink(lat, lon) {
-    if (lat == null || lon == null) return '';
-    const la = Number(lat).toFixed(5), lo = Number(lon).toFixed(5);
-    const url = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=18/${la}/${lo}`;
-    return `<a href="${url}" target="_blank" rel="noopener">📍 ${la}, ${lo}</a>`;
+  function mapLink(e) {
+    if (e.lat == null || e.lon == null) return '';
+    const la = Number(e.lat).toFixed(5), lo = Number(e.lon).toFixed(5);
+    return `<a href="#map" class="mlink" data-id="${e.id}">📍 ${la}, ${lo}</a>`;
   }
 
   async function del(id, btn) {
@@ -125,6 +139,8 @@
   }
 
   let map = null;
+  let cluster = null;
+  const markersById = new Map();
   function renderMap(entries) {
     const mapEl = document.getElementById('map');
     const located = entries.filter(e => e.lat != null && e.lon != null);
@@ -134,17 +150,29 @@
     if (!map) {
       map = L.map(mapEl, { scrollWheelZoom: false });
       window.bpTileLayer().addTo(map);
+      // Clustering keeps repeat photos of the same tree tappable: identical
+      // coordinates spiderfy out on tap instead of stacking.
+      cluster = L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false });
+      map.addLayer(cluster);
     } else {
-      map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+      cluster.clearLayers();
     }
+    markersById.clear();
 
     const latlngs = [];
     for (const e of located) {
       const popup = `
-        <img loading="lazy" src="${e.image_url}" alt="Saved bark photo" />
+        <img loading="lazy" src="${e.thumb_url || e.image_url}" alt="Saved bark photo" />
         <p class="pq">${escapeHtml(e.text)}</p>
-        <div class="pd">${escapeHtml(formatDate(e.created_at))}</div>`;
-      L.marker([e.lat, e.lon]).addTo(map).bindPopup(popup);
+        <div class="pd">
+          <span>${escapeHtml(formatDate(e.created_at))}</span>
+          <a href="#entry-${e.id}" class="plink" data-id="${e.id}">Show ↓</a>
+        </div>`;
+      const marker = L.marker([e.lat, e.lon]).bindPopup(popup, {
+        maxWidth: 190, minWidth: 170, autoPanPadding: [12, 12],
+      });
+      cluster.addLayer(marker);
+      markersById.set(e.id, marker);
       latlngs.push([e.lat, e.lon]);
     }
     if (latlngs.length === 1) {
@@ -163,19 +191,45 @@
     for (const e of entries) {
       const card = document.createElement('div');
       card.className = 'card';
+      card.id = `entry-${e.id}`;
       card.innerHTML = `
-        <img loading="lazy" src="${e.image_url}" alt="Saved bark photo" />
+        <img loading="lazy" src="${e.thumb_url || e.image_url}" alt="Saved bark photo" />
         <blockquote>${escapeHtml(e.text)}</blockquote>
         <div class="meta">
           <span>${escapeHtml(formatDate(e.created_at))}</span>
           <span class="corpus">${escapeHtml(e.corpus || '')}</span>
-          ${mapLink(e.lat, e.lon)}
+          ${mapLink(e)}
           <button class="del" type="button">Delete</button>
         </div>`;
       card.querySelector('.del').addEventListener('click', (ev) => del(e.id, ev.target));
       list.appendChild(card);
     }
   }
+
+  // Map ↔ list navigation. A popup's "Show ↓" closes the popup and scrolls
+  // to the entry's card; a card's 📍 link scrolls to the map and opens the
+  // entry's popup (unclustering as needed).
+  document.addEventListener('click', (ev) => {
+    const plink = ev.target.closest('.plink');
+    if (plink) {
+      ev.preventDefault();
+      const card = document.getElementById(`entry-${plink.dataset.id}`);
+      if (!card) return;
+      if (map) map.closePopup();
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('flash');
+      setTimeout(() => card.classList.remove('flash'), 1600);
+      return;
+    }
+    const mlink = ev.target.closest('.mlink');
+    if (mlink) {
+      ev.preventDefault();
+      const marker = markersById.get(Number(mlink.dataset.id));
+      if (!marker || !map) return;
+      document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      cluster.zoomToShowLayer(marker, () => marker.openPopup());
+    }
+  });
 
   async function load() {
     try {

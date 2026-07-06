@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir \
     "uvicorn[standard]" \
     python-multipart \
     pillow \
+    pillow-heif \
     numpy \
     scipy \
     bcrypt \

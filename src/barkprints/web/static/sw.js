@@ -1,7 +1,7 @@
 // Minimal service worker: cache the app shell so the page opens offline.
 // Inference still requires the server, but the UI loads instantly.
 
-const CACHE = 'barkprints-shell-v1';
+const CACHE = 'barkprints-shell-v3';
 const SHELL = [
   '/',
   '/static/icon.svg',
@@ -30,13 +30,18 @@ self.addEventListener('fetch', (event) => {
   // Never cache API calls — results are computed per upload.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Network-first for the HTML shell, cache fallback when offline.
+  // Network-first for the HTML shell, cache fallback when offline. Only the
+  // start page refreshes the '/' cache entry — caching whatever page was
+  // navigated last (e.g. /gallery or /login) under '/' would make an offline
+  // open of the app show the wrong page.
   if (req.mode === 'navigate' || req.destination === 'document') {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('/', copy));
+          if (url.pathname === '/' && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put('/', copy));
+          }
           return res;
         })
         .catch(() => caches.match('/'))
@@ -44,17 +49,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static assets.
+  // Stale-while-revalidate for static assets: answer from cache immediately
+  // for speed, but always refresh the cached copy in the background so a
+  // deploy shows up on the next load (plain cache-first served stale JS/CSS
+  // until the cache version was bumped by hand).
   if (url.pathname.startsWith('/static/') || url.pathname === '/manifest.webmanifest') {
     event.respondWith(
-      caches.match(req).then((hit) =>
-        hit ||
-        fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
-      )
+      caches.match(req).then((hit) => {
+        const refresh = fetch(req)
+          .then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put(req, copy));
+            }
+            return res;
+          })
+          .catch(() => hit);
+        return hit || refresh;
+      })
     );
   }
 });

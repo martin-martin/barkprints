@@ -33,6 +33,7 @@ from ..corpus import Corpus
 from ..corpus_loader import CorpusLoader
 from ..feature_extractor import ImageFeatureExtractor
 from ..walk_generator import WalkGenerator
+from . import images  # noqa: F401 — import registers the HEIC opener for PIL
 from .exif import extract_gps_latlon
 from .store import Store
 
@@ -114,6 +115,29 @@ def create_app() -> FastAPI:
         )
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.middleware("http")
+    async def cache_headers(request: Request, call_next):
+        """Explicit caching policy for every GET.
+
+        Without Cache-Control, browsers cache heuristically (10% of the file's
+        age since Last-Modified), which let phones show a stale app for days
+        after a deploy. `no-cache` still allows caching but forces ETag/
+        Last-Modified revalidation — a cheap 304 — so a reload always picks up
+        new code; the service worker provides the instant-load feel instead.
+        """
+        response = await call_next(request)
+        if request.method == "GET" and "cache-control" not in response.headers:
+            path = request.url.path
+            if path.startswith("/api/"):
+                if path.endswith(("/image", "/thumb")):
+                    # Saved photos are immutable (uuid filenames, never edited).
+                    response.headers["Cache-Control"] = "private, max-age=86400"
+                else:
+                    response.headers["Cache-Control"] = "no-store"
+            else:
+                response.headers["Cache-Control"] = "no-cache"
+        return response
 
     # -- pages -----------------------------------------------------------
 
@@ -280,7 +304,16 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=413, detail="Image too large")
 
         suffix = Path(image.filename or "upload").suffix.lower() or ".jpg"
-        if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}:
+        # HEIC/HEIF can't be displayed by browsers, so store those as JPEG.
+        if image.content_type in {"image/heic", "image/heif"} or suffix in {".heic", ".heif"}:
+            try:
+                data = images.to_jpeg_bytes(data)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=415, detail="Could not decode HEIC image"
+                ) from exc
+            suffix = ".jpg"
+        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
             suffix = ".jpg"
         filename = f"{uuid4().hex}{suffix}"
         (store.uploads_dir / filename).write_bytes(data)
@@ -307,6 +340,24 @@ def create_app() -> FastAPI:
         media_type = mimetypes.guess_type(entry.image_filename)[0] or "application/octet-stream"
         return FileResponse(path, media_type=media_type)
 
+    @app.get("/api/entries/{entry_id}/thumb", include_in_schema=False)
+    def entry_thumb(entry_id: int, user_id: int = Depends(require_user)) -> FileResponse:
+        entry = store.get_entry(entry_id, user_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        src = store.uploads_dir / entry.image_filename
+        if not src.exists():
+            raise HTTPException(status_code=404, detail="Image missing")
+        # Thumbnails are generated on first request and kept on disk, so
+        # entries saved before this feature existed get one too.
+        dest = store.thumbs_dir / f"{Path(entry.image_filename).stem}.jpg"
+        if not dest.exists() and not images.make_thumbnail(src, dest):
+            # Undecodable source (e.g. HEIC saved before conversion existed
+            # on a box without the codec) — serve the original instead.
+            media_type = mimetypes.guess_type(entry.image_filename)[0] or "application/octet-stream"
+            return FileResponse(src, media_type=media_type)
+        return FileResponse(dest, media_type="image/jpeg")
+
     @app.delete("/api/entries/{entry_id}")
     def delete_entry(entry_id: int, user_id: int = Depends(require_user)) -> JSONResponse:
         filename = store.delete_entry(entry_id, user_id)
@@ -314,6 +365,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Not found")
         try:
             (store.uploads_dir / filename).unlink(missing_ok=True)
+            (store.thumbs_dir / f"{Path(filename).stem}.jpg").unlink(missing_ok=True)
         except OSError:
             pass
         return JSONResponse({"ok": True})
