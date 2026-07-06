@@ -182,7 +182,85 @@ def test_stops_at_sentence_end():
     assert text.split() == ["The", "old", "tree."]
 
 
-def test_min_words_floor_prevents_early_stop():
+def test_cycle_is_escaped_not_looped():
+    """A bigram cycle can only be re-entered while fresh edges remain, so the
+    walk escapes instead of looping to max_words."""
+    # "the -> most -> of -> the" is a cycle the old greedy walk looped on
+    # forever; "of" also offers an escape ("bark.").
+    vocabulary = ["bark.", "most", "of", "the"]
+    word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
+    bigram_table = {
+        "the": [("most", 3)],
+        "most": [("of", 3)],
+        "of": [("the", 3), ("bark.", 1)],
+    }
+    corpus = Corpus(
+        name="cycle",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["the"],
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=12, min_words=2)
+    words = walker.generate(vec, corpus).lower().split()
+
+    # Second visit to "of" has (of, the) marked used, so "bark." is the only
+    # fresh candidate and the walk ends there — well short of max_words.
+    assert words[-1] == "bark."
+    assert len(words) < 12
+
+
+def test_forced_single_path_may_repeat():
+    """When every continuation repeats a used edge, the walk still continues."""
+    # Pure two-word cycle with no escape: a -> b -> a -> b ...
+    vocabulary = ["a", "b"]
+    word_embeddings = np.random.RandomState(0).randn(2, 384)
+    bigram_table = {"a": [("b", 1)], "b": [("a", 1)]}
+    corpus = Corpus(
+        name="forced",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["a"],
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=6, min_words=6)
+    words = walker.generate(vec, corpus).lower().split()
+
+    assert words == ["a", "b", "a", "b", "a", "b"]
+
+
+def test_word_reuse_decay_prefers_fresh_words():
+    """A heavily reused word loses to a fresh alternative despite higher counts."""
+    # "b" is the common follower of "a" and ties with "d" after "c" — but by
+    # the time the walk reaches "c", "b" has been used once, so its halved
+    # score (0.5 * 0.5 = 0.25) loses to the fresh "d" (0.5) at alpha=0.
+    vocabulary = ["a", "b", "c", "d"]
+    word_embeddings = np.random.RandomState(0).randn(4, 384)
+    bigram_table = {
+        "a": [("b", 9), ("c", 1)],
+        "b": [("a", 1)],
+        "c": [("b", 1), ("d", 1)],
+    }
+    corpus = Corpus(
+        name="decay",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["a"],
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=6, min_words=6)
+    words = walker.generate(vec, corpus).lower().split()
+
+    # Walk: a -> b (0.9 beats 0.1). b -> a (forced). a -> c: the a->b edge is
+    # used, so "c" is the only fresh candidate. c -> d: b has been used once,
+    # so the fresh "d" wins.
+    assert words[:5] == ["a", "b", "a", "c", "d"]
     """A sentence end before min_words does not stop the walk."""
     vocabulary = ["ab.", "cd", "de", "the"]
     word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)

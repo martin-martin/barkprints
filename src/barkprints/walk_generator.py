@@ -81,12 +81,17 @@ class WalkGenerator:
 
         return matrix @ vec / (row_norms * vec_norm)
 
+    # Each prior use of a word halves its score, so the greedy walk is pushed
+    # toward the next-most-similar fresh word instead of circling favorites.
+    WORD_REUSE_DECAY = 0.5
+
     def _score_candidates(
         self,
         candidates: list[tuple[str, int]],
         feature_vector: np.ndarray,
         corpus: Corpus,
         vocab_index: dict[str, int],
+        word_use: dict[str, int],
     ) -> str:
         """Score bigram candidates by blending transition probability and bark similarity.
 
@@ -94,6 +99,8 @@ class WalkGenerator:
             candidates: List of (next_word, count) tuples
             feature_vector: Current (possibly rolled) feature vector
             corpus: The corpus
+            vocab_index: word -> row index into corpus.word_embeddings
+            word_use: How often each word already appears in this walk
 
         Returns:
             Selected next word
@@ -115,6 +122,7 @@ class WalkGenerator:
                 bark_sim = 0.0
 
             score = (1 - self.alpha) * transition_prob + self.alpha * bark_sim
+            score *= self.WORD_REUSE_DECAY ** word_use.get(word, 0)
             if score > best_score:
                 best_score = score
                 best_word = word
@@ -155,6 +163,8 @@ class WalkGenerator:
             current_word = start_indices[best][0]
 
         words = [current_word]
+        word_use: dict[str, int] = {current_word: 1}
+        used_bigrams: set[tuple[str, str]] = set()
 
         # Step 2: Walk
         for step in range(1, self.max_words):
@@ -164,15 +174,34 @@ class WalkGenerator:
             candidates = self._next_candidates(words, corpus)
 
             if candidates:
+                # Never re-take an edge already walked in this poem, unless the
+                # path is forced (every candidate would repeat a used bigram).
+                previous = words[-1]
+                fresh = [
+                    (word, count)
+                    for word, count in candidates
+                    if (previous, word) not in used_bigrams
+                ]
+                if fresh:
+                    candidates = fresh
                 # Score candidates by blended transition + bark similarity
-                current_word = self._score_candidates(candidates, rolled, corpus, vocab_index)
+                current_word = self._score_candidates(
+                    candidates, rolled, corpus, vocab_index, word_use
+                )
+                used_bigrams.add((previous, current_word))
             else:
-                # Dead-end fallback: pick from entire vocabulary by bark similarity
-                sims = self._cosine_similarities(rolled, corpus.word_embeddings)
+                # Dead-end fallback: pick from entire vocabulary by bark
+                # similarity, decayed for words this walk already used.
+                sims = (self._cosine_similarities(rolled, corpus.word_embeddings) + 1) / 2
+                for word, uses in word_use.items():
+                    idx = vocab_index.get(word)
+                    if idx is not None:
+                        sims[idx] *= self.WORD_REUSE_DECAY**uses
                 best_idx = int(np.argmax(sims))
                 current_word = corpus.vocabulary[best_idx]
 
             words.append(current_word)
+            word_use[current_word] = word_use.get(current_word, 0) + 1
 
             # Stop at a natural sentence end once we have enough words.
             if len(words) >= self.min_words and self._is_sentence_end(current_word):
