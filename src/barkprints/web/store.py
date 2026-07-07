@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS entries (
     corpus         TEXT NOT NULL,
     alpha          REAL,
     max_words      INTEGER,
+    spatial_weight REAL,
     text           TEXT NOT NULL,
     image_filename TEXT NOT NULL,
     lat            REAL,
@@ -57,6 +58,7 @@ class Entry:
     corpus: str
     alpha: Optional[float]
     max_words: Optional[int]
+    spatial_weight: Optional[float]
     text: str
     image_filename: str
     lat: Optional[float]
@@ -70,6 +72,7 @@ class Entry:
             "corpus": self.corpus,
             "alpha": self.alpha,
             "max_words": self.max_words,
+            "spatial_weight": self.spatial_weight,
             "text": self.text,
             "lat": self.lat,
             "lon": self.lon,
@@ -98,6 +101,13 @@ class Store:
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA)
+            # Additive migration: CREATE TABLE IF NOT EXISTS won't add a
+            # column to a table that already exists from before this field.
+            existing_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(entries)")
+            }
+            if "spatial_weight" not in existing_columns:
+                conn.execute("ALTER TABLE entries ADD COLUMN spatial_weight REAL")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -180,23 +190,25 @@ class Store:
         lat: Optional[float],
         lon: Optional[float],
         accuracy: Optional[float],
+        spatial_weight: Optional[float] = None,
     ) -> Entry:
         created_at = _now()
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO entries
-                    (user_id, created_at, corpus, alpha, max_words, text,
-                     image_filename, lat, lon, accuracy)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (user_id, created_at, corpus, alpha, max_words, spatial_weight,
+                     text, image_filename, lat, lon, accuracy)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, created_at, corpus, alpha, max_words, text,
-                 image_filename, lat, lon, accuracy),
+                (user_id, created_at, corpus, alpha, max_words, spatial_weight,
+                 text, image_filename, lat, lon, accuracy),
             )
             entry_id = int(cur.lastrowid)
         return Entry(
             id=entry_id, user_id=user_id, created_at=created_at, corpus=corpus,
-            alpha=alpha, max_words=max_words, text=text, image_filename=image_filename,
+            alpha=alpha, max_words=max_words, spatial_weight=spatial_weight,
+            text=text, image_filename=image_filename,
             lat=lat, lon=lon, accuracy=accuracy,
         )
 
@@ -234,6 +246,7 @@ class Store:
         return Entry(
             id=row["id"], user_id=row["user_id"], created_at=row["created_at"],
             corpus=row["corpus"], alpha=row["alpha"], max_words=row["max_words"],
+            spatial_weight=row["spatial_weight"],
             text=row["text"], image_filename=row["image_filename"],
             lat=row["lat"], lon=row["lon"], accuracy=row["accuracy"],
         )

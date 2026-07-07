@@ -185,6 +185,13 @@
         <input id="maxwords" type="number" min="1" max="200" value="20" />
       </div>
     </div>
+    <div class="row" style="margin-top: 16px;">
+      <div>
+        <label for="spatialweight">Bark structure <span id="spatialweight-val" class="score"></span></label>
+        <input id="spatialweight" type="range" min="0" max="1" step="0.05" value="0.35" />
+        <small style="color: var(--muted);">whole image ↔ patch by patch</small>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -221,6 +228,8 @@
   const alphaInput = document.getElementById('alpha');
   const alphaVal = document.getElementById('alpha-val');
   const maxWordsInput = document.getElementById('maxwords');
+  const spatialWeightInput = document.getElementById('spatialweight');
+  const spatialWeightVal = document.getElementById('spatialweight-val');
   const captureBtn = document.getElementById('capture-btn');
   const uploadBtn = document.getElementById('upload-btn');
   const captureInput = document.getElementById('capture-input');
@@ -254,11 +263,15 @@
     corpus: localStorage.getItem('bp-corpus') || 'nature',
     alpha: localStorage.getItem('bp-alpha') || '0.5',
     maxWords: localStorage.getItem('bp-maxwords') || '20',
+    spatialWeight: localStorage.getItem('bp-spatialweight') || '0.35',
   };
   alphaInput.value = lastSettings.alpha;
   maxWordsInput.value = lastSettings.maxWords;
+  spatialWeightInput.value = lastSettings.spatialWeight;
   const showAlpha = () => { alphaVal.textContent = Number(alphaInput.value).toFixed(2); };
+  const showSpatialWeight = () => { spatialWeightVal.textContent = Number(spatialWeightInput.value).toFixed(2); };
   showAlpha();
+  showSpatialWeight();
 
   async function loadCorpora() {
     try {
@@ -289,6 +302,10 @@
   });
   maxWordsInput.addEventListener('change', () => {
     localStorage.setItem('bp-maxwords', maxWordsInput.value);
+  });
+  spatialWeightInput.addEventListener('input', () => {
+    showSpatialWeight();
+    localStorage.setItem('bp-spatialweight', spatialWeightInput.value);
   });
 
   captureBtn.addEventListener('click', () => captureInput.click());
@@ -435,6 +452,7 @@
     fd.append('corpus', corpusSelect.value);
     fd.append('alpha', alphaInput.value);
     fd.append('max_words', maxWordsInput.value);
+    fd.append('spatial_weight', spatialWeightInput.value);
 
     showLoading();
     captureBtn.disabled = uploadBtn.disabled = true;
@@ -475,6 +493,7 @@
     fd.append('corpus', corpusSelect.value);
     fd.append('alpha', alphaInput.value);
     fd.append('max_words', maxWordsInput.value);
+    fd.append('spatial_weight', spatialWeightInput.value);
     if (pickedGeo) {
       fd.append('lat', pickedGeo.lat);
       fd.append('lon', pickedGeo.lon);

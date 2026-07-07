@@ -14,6 +14,8 @@ Every bark image produces a deterministic voice. Each unique bark pattern maps t
    - Color histograms, texture gradients, spatial statistics
    - Frequency features via DCT coefficients
    - Normalized to embedding-like range `[-1, 1]`
+   - A separate 10×10 grid of local per-patch descriptors (brightness, contrast,
+     edge density) is also extracted, for the spatial steering below.
 
 2. **Corpus**: A corpus is built ahead of time from a body of text and stored as an `.npz` file containing:
    - the **vocabulary** (unique words)
@@ -21,23 +23,40 @@ Every bark image produces a deterministic voice. Each unique bark pattern maps t
    - a **bigram table** (which words follow which, with counts)
    - the set of **start words** (words that begin sentences)
 
-3. **Steered Walk**: The generator walks the bigram model one word at a time.
+3. **Steered Walk**: The generator walks the bigram/trigram model one word at a time.
    - The first word is chosen from the corpus's start words by bark similarity.
-   - At each step the candidate next words (from the bigram table) are scored by blending two signals:
-     `score = (1 - alpha) * transition_probability + alpha * bark_similarity`
-   - The image feature vector is *rolled* a little at each step, so the bark steers a different part of the walk as it goes.
+   - At each step the candidate next words (from the bigram/trigram table, widened with a few bark-similar
+     vocabulary words so `alpha` always has real choices to weigh) are scored by blending:
+     `score = (1 - alpha) * transition_probability + alpha * bark_similarity - repetition_penalty`
+   - The repetition penalty discourages re-choosing a word from a context the walk has already been in, and
+     (more gently) discourages a word from reappearing at all — without ever forbidding it outright, so
+     function words can still repeat naturally while short cycles ("of the most of the most...") can't.
+   - The image feature vector is *rolled* a little at each step, and blended with the local descriptor for a
+     specific patch of the bark — visited in a fixed serpentine reading order across the image — so a
+     specific part of the bark's structure steers each word, not just an arbitrary reindexing of the whole vector.
 
-4. **Deterministic Output**: Same image + corpus + settings = same text, always.
+4. **Deterministic Output**: Same image + corpus + settings = same text, always. There is no randomness
+   anywhere in the pipeline — every choice is a strict argmax over the scoring formula above.
 
 ### The `alpha` knob
 
 `alpha` blends coherence against bark personality:
 
-- `alpha = 0.0` — pure bigram coherence: follow the most common word transitions (reads smoothest, ignores the image).
+- `alpha = 0.0` — pure bigram/trigram coherence: follow the most common word transitions (reads smoothest, ignores the image).
 - `alpha = 1.0` — pure bark personality: pick whichever next word the image is most "similar" to (wilder, more image-driven).
 - `alpha = 0.5` (default) — a blend of the two.
 
-> **Note:** `alpha` only has room to act where the bigram table offers a *choice*. In the small built-in `nature` and `literature` corpora, ~84% of words have only one possible follower, so the walk is largely forced and `alpha` barely changes the output. The effect is clearest on the larger corpora (`walden`, `tao`, `rilke`).
+Even where the n-gram table offers only one observed follower, a handful of bark-similar vocabulary words are
+added as low-probability alternatives, so `alpha` has real leverage at every step — not just in the larger corpora.
+
+### The `spatial-weight` knob
+
+`spatial-weight` (`--spatial-weight`, default `0.35`) controls how much a specific patch of the bark image —
+visited in a fixed reading order as the poem progresses — blends into the steering vector, versus the bark's
+overall color/texture/frequency signature:
+
+- `spatial-weight = 0.0` — steer by the whole image's aggregate feature vector only.
+- `spatial-weight = 1.0` — steer by the local patch alone, so each word reflects one specific part of the bark.
 
 ## Installation
 
@@ -74,10 +93,12 @@ uv run barkprints tree1.jpg tree2.jpg tree3.jpg -c walden
 ```bash
 barkprints <image>... [options]
 
-  -c, --corpus NAME    Corpus to use (default: nature)
-  --alpha FLOAT        Blend: 0.0 = bigram coherence, 1.0 = bark personality (default: 0.5)
-  --max-words INT      Maximum words in output (default: 20)
-  --list-corpora       Show available corpora and exit
+  -c, --corpus NAME       Corpus to use (default: nature)
+  --alpha FLOAT           Blend: 0.0 = bigram/trigram coherence, 1.0 = bark personality (default: 0.5)
+  --max-words INT         Maximum words in output (default: 20)
+  --min-words INT         Minimum words before the walk may stop at a sentence end (default: 5)
+  --spatial-weight FLOAT  How much a local bark patch steers each step, vs. the whole image (default: 0.35)
+  --list-corpora          Show available corpora and exit
 ```
 
 ## Web App / PWA
@@ -90,7 +111,7 @@ uv run barkprints-web                       # http://127.0.0.1:8000
 uv run barkprints-web --host 0.0.0.0 --port 8000   # expose to your LAN / a reverse proxy
 ```
 
-Open the URL on your phone and "Add to Home Screen" for an app-like experience. The UI lets you pick a corpus, set the **bark influence** (`alpha`) and **max words**, and take or upload a photo.
+Open the URL on your phone and "Add to Home Screen" for an app-like experience. The UI lets you pick a corpus, set the **bark influence** (`alpha`), **max words**, and **bark structure** (`spatial-weight`), and take or upload a photo.
 
 ### Accounts & saving
 
@@ -121,11 +142,11 @@ session cookie; set `BARKPRINTS_SECRET_KEY` to keep sessions valid across restar
 (otherwise a random key is persisted in the data dir).
 
 API endpoints: `GET /api/corpora`, `POST /api/generate` (multipart: `image`, `corpus`,
-`alpha`, `max_words`; the response includes `exif_lat`/`exif_lon` when the photo carries
-GPS metadata), `POST /api/login` / `POST /api/logout` / `GET /api/me`,
-`POST /api/save` (multipart: `image`, `text`, `corpus`, `alpha`, `max_words`, optional
-`lat`/`lon`/`accuracy`), `GET /api/entries`, `GET /api/entries/{id}/image`,
-`DELETE /api/entries/{id}`, `GET /healthz`.
+`alpha`, `max_words`, `spatial_weight`; the response includes `exif_lat`/`exif_lon` when
+the photo carries GPS metadata), `POST /api/login` / `POST /api/logout` / `GET /api/me`,
+`POST /api/save` (multipart: `image`, `text`, `corpus`, `alpha`, `max_words`,
+`spatial_weight`, optional `lat`/`lon`/`accuracy`), `GET /api/entries`,
+`GET /api/entries/{id}/image`, `DELETE /api/entries/{id}`, `GET /healthz`.
 
 ## Deployment (Docker)
 
@@ -206,23 +227,25 @@ With `barks.jpg`:
 
 ```bash
 $ uv run barkprints barks.jpg -c nature
-Creatures find shelter among twisted roots. shelter among twisted roots. who walk in the forest is a single living organism.
+Creatures find shelter among twisted roots.
 
 $ uv run barkprints barks.jpg -c walden --alpha 0.0 --max-words 16
-Fishes, and the most of the most of the most of the most of the most
+Fishes, and the most of the same time to the woods and a few miles of
 
 $ uv run barkprints barks.jpg -c walden --alpha 1.0 --max-words 16
-Fishes, pervaded by sufferance while for reading of knowing but forever blows, the fragrance filling up
+Fishes, pressure _point feature. inclines, cloying prevalent mercy.
 ```
 
-(The repetition at `alpha = 0.0` is the bigram model following its single most-likely path; raising `alpha` lets the bark pull the walk elsewhere.)
+(Even at `alpha = 0.0`, the repetition penalty keeps the walk from looping on its single most-likely
+path — it used to get stuck repeating "of the most" forever. Raising `alpha` lets the bark pull the walk
+further from plain n-gram coherence.)
 
 ## Programmatic Usage
 
 ```python
 from barkprints.text_generator import TextGenerator
 
-generator = TextGenerator(alpha=0.8, max_words=30)
+generator = TextGenerator(alpha=0.8, max_words=30, spatial_weight=0.35)
 
 text = generator.generate("barks.jpg", "walden")
 print(text)
@@ -233,13 +256,17 @@ assert generator.generate("barks.jpg", "walden") == text  # always True
 
 ## Technical Details
 
-**Feature Vector**: ~700 numerical features per image, normalized and padded/truncated to the corpus embedding dimension (384 for `all-MiniLM-L6-v2`).
+**Feature Vector**: ~700 numerical features per image, normalized and padded/truncated to the corpus embedding dimension (384 for `all-MiniLM-L6-v2`). A separate 10×10 spatial grid of local per-patch descriptors (brightness, contrast, gradient magnitude, edge density) is extracted alongside it.
 
 **Embedding Model**: Word embeddings are produced at *build* time with `all-MiniLM-L6-v2` (384 dimensions) by default; choose another with `--model` when building a corpus.
 
-**Corpus Format** (`.npz`): `vocabulary`, `word_embeddings` `(V, D)`, `bigram_json` (serialized transition table), `start_words`, and `metadata`.
+**Corpus Format** (`.npz`): `vocabulary`, `word_embeddings` `(V, D)`, `bigram_json` (serialized transition table), `trigram_json` (optional), `start_words`, and `metadata`.
 
-**Similarity Metric**: Cosine similarity between the (rolled) image vector and word embeddings.
+**Similarity Metric**: Cosine similarity between the (rolled and spatially-steered) image vector and word embeddings.
+
+**Anti-Repetition**: Candidates are penalized for having already been chosen from the same n-gram context, and (more gently) for having already appeared anywhere in the walk — enough to break short cycles without forbidding natural repetition of common words.
+
+**Alpha-Widening**: A few extra vocabulary words, chosen by bark similarity, are added as low-probability candidates at every step, so `alpha` has real choices to weigh even where the n-gram table offers only one observed follower.
 
 **Determinism**: Same pixels → same features → same scored walk → same text.
 

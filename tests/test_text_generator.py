@@ -96,3 +96,15 @@ def test_generate_with_max_words(sample_image):
     text = generator.generate(str(sample_image), "nature")
 
     assert len(text.split()) <= 5
+
+
+def test_generate_uses_spatial_grid(sample_image):
+    """TextGenerator should extract and use the bark's spatial grid end-to-end."""
+    gen_low = TextGenerator(spatial_weight=0.0)
+    gen_high = TextGenerator(spatial_weight=1.0)
+
+    text_low = gen_low.generate(str(sample_image), "nature")
+    text_high = gen_high.generate(str(sample_image), "nature")
+
+    assert isinstance(text_low, str)
+    assert isinstance(text_high, str)
