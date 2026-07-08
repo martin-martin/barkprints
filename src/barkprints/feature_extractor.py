@@ -178,5 +178,53 @@ class ImageFeatureExtractor:
         
         # Clip to [-1, 1] range
         features = np.clip(features, -1, 1)
-        
+
         return features
+
+    def extract_spatial_grid(self, grid_size: int = 10) -> np.ndarray:
+        """Extract a per-cell local descriptor grid from the image.
+
+        Divides the image into a grid_size x grid_size grid (same cell-slicing
+        convention as the SPATIAL STATISTICS block in extract_features) and
+        computes, for each cell, [mean_gray, std_gray, mean_gradient_magnitude,
+        edge_density] in raw units. Independent of extract_features(): does not
+        affect its 384-d output or require re-embedding/rebuilding any corpus.
+
+        Used to let a word-walk steer through specific patches of the bark
+        image in a fixed reading order, rather than only comparing against an
+        aggregate whole-image feature vector.
+
+        Args:
+            grid_size: Number of rows/columns to divide the image into.
+
+        Returns:
+            (grid_size * grid_size, 4) array of per-cell descriptors.
+        """
+        img = self.image.convert('RGB')
+        max_dim = 512
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+        gray = np.array(img.convert('L')).astype(np.float64)
+        grad_x = ndimage.sobel(gray, axis=0)
+        grad_y = ndimage.sobel(gray, axis=1)
+        gradient_magnitude = np.hypot(grad_x, grad_y)
+
+        h, w = gray.shape
+        cell_h, cell_w = h // grid_size, w // grid_size
+
+        descriptors = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                gray_cell = gray[i * cell_h:(i + 1) * cell_h, j * cell_w:(j + 1) * cell_w]
+                grad_cell = gradient_magnitude[
+                    i * cell_h:(i + 1) * cell_h, j * cell_w:(j + 1) * cell_w
+                ]
+                descriptors.append([
+                    gray_cell.mean(),
+                    gray_cell.std(),
+                    grad_cell.mean(),
+                    (grad_cell > 30).mean(),
+                ])
+
+        return np.array(descriptors)

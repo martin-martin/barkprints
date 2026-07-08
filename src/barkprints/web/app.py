@@ -228,6 +228,7 @@ def create_app() -> FastAPI:
         corpus: str = Form("nature"),
         alpha: float = Form(0.5),
         max_words: int = Form(20),
+        spatial_weight: float = Form(0.35),
         user_id: int = Depends(require_user),
     ) -> JSONResponse:
         if image.content_type not in ALLOWED_CONTENT_TYPES:
@@ -239,6 +240,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="alpha must be between 0.0 and 1.0")
         if not (1 <= max_words <= 200):
             raise HTTPException(status_code=400, detail="max_words must be between 1 and 200")
+        if not (0.0 <= spatial_weight <= 1.0):
+            raise HTTPException(
+                status_code=400, detail="spatial_weight must be between 0.0 and 1.0"
+            )
 
         data = await image.read()
         if len(data) == 0:
@@ -260,9 +265,10 @@ def create_app() -> FastAPI:
                 features = extractor.extract_features(
                     target_dim=corpus_obj.word_embeddings.shape[1]
                 )
-                text = WalkGenerator(alpha=alpha, max_words=max_words).generate(
-                    features, corpus_obj
-                )
+                spatial_grid = extractor.extract_spatial_grid()
+                text = WalkGenerator(
+                    alpha=alpha, max_words=max_words, spatial_weight=spatial_weight
+                ).generate(features, corpus_obj, spatial_grid=spatial_grid)
             except Exception as exc:
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -284,6 +290,7 @@ def create_app() -> FastAPI:
         corpus: str = Form("nature"),
         alpha: Optional[float] = Form(None),
         max_words: Optional[int] = Form(None),
+        spatial_weight: Optional[float] = Form(None),
         lat: Optional[float] = Form(None),
         lon: Optional[float] = Form(None),
         accuracy: Optional[float] = Form(None),
@@ -320,7 +327,8 @@ def create_app() -> FastAPI:
 
         entry = store.add_entry(
             user_id=user_id, corpus=corpus, alpha=alpha, max_words=max_words,
-            text=text, image_filename=filename, lat=lat, lon=lon, accuracy=accuracy,
+            spatial_weight=spatial_weight, text=text, image_filename=filename,
+            lat=lat, lon=lon, accuracy=accuracy,
         )
         return JSONResponse({"entry": entry.as_dict()}, status_code=201)
 

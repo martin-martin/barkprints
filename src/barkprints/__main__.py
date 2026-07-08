@@ -54,6 +54,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--spatial-weight",
+        type=float,
+        default=0.35,
+        help="How much the bark's local spatial structure steers each step, "
+        "versus its aggregate feature vector (default: 0.35)",
+    )
+
+    parser.add_argument(
         "--list-corpora", action="store_true", help="List available corpora and exit"
     )
 
@@ -86,7 +94,10 @@ Examples:
 
     # Generate text for each image
     generator = TextGenerator(
-        alpha=args.alpha, max_words=args.max_words, min_words=args.min_words
+        alpha=args.alpha,
+        max_words=args.max_words,
+        min_words=args.min_words,
+        spatial_weight=args.spatial_weight,
     )
     error_occurred = False
 

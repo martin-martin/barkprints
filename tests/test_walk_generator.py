@@ -182,6 +182,119 @@ def test_stops_at_sentence_end():
     assert text.split() == ["The", "old", "tree."]
 
 
+def test_repetition_penalty_breaks_cycle():
+    """A bigram cycle with an available alternative should not repeat forever."""
+    vocabulary = ["a", "b", "c", "problem"]
+    word_embeddings = np.random.RandomState(0).randn(len(vocabulary), 384)
+    # Without a repetition penalty, alpha=0.0 argmax would loop a -> b -> c -> a -> ...
+    # forever, since "problem" is always the lower-count (non-argmax) alternative.
+    bigram_table = {
+        "a": [("b", 5), ("problem", 1)],
+        "b": [("c", 5)],
+        "c": [("a", 5)],
+    }
+    corpus = Corpus(
+        name="cycle",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table=bigram_table,
+        start_words=["a"],
+    )
+
+    vec = np.random.RandomState(1).randn(384)
+    walker = WalkGenerator(alpha=0.0, max_words=8, min_words=8)
+    words = walker.generate(vec, corpus).lower().split()
+
+    # A pure argmax walk would produce "a b c a b c a b" (never varying).
+    # With the repetition penalty, the walk should break out of the 3-cycle.
+    assert len(set(words)) > 3
+
+
+def test_widen_gives_alpha_leverage():
+    """A single-follower context should still let alpha pick a bark-similar word."""
+    vocabulary = ["start", "only_follower", "bark_favorite"]
+    embeddings = np.zeros((len(vocabulary), 4))
+    embeddings[0] = [1, 0, 0, 0]  # start
+    embeddings[1] = [1, 0, 0, 0]  # only_follower: similar to "start", not to bark vec
+    embeddings[2] = [0, 0, 0, 1]  # bark_favorite: matches the bark vector below
+
+    bigram_table = {"start": [("only_follower", 1)]}
+    corpus = Corpus(
+        name="widen",
+        vocabulary=vocabulary,
+        word_embeddings=embeddings,
+        bigram_table=bigram_table,
+        start_words=["start"],
+    )
+
+    # Chosen so that after generate()'s per-step np.roll (stride=2 for a 4-d
+    # vector with max_words=2), the walk's one real step compares against
+    # [0, 0, 0, 1] -- an exact match for "bark_favorite" and orthogonal to
+    # "start"/"only_follower"'s [1, 0, 0, 0] -- so at alpha=1.0 the bark-similar
+    # widened candidate should win over the sole bigram candidate.
+    vec = np.array([0.0, 1.0, 0, 0])
+
+    walker_low = WalkGenerator(alpha=0.0, max_words=2, min_words=2)
+    words_low = walker_low.generate(vec, corpus).lower().split()
+    assert words_low == ["start", "only_follower"]
+
+    walker_high = WalkGenerator(alpha=1.0, max_words=2, min_words=2)
+    words_high = walker_high.generate(vec, corpus).lower().split()
+    assert words_high == ["start", "bark_favorite"]
+
+
+def test_widen_preserves_alpha_zero_behavior():
+    """alpha=0.0 output should be unchanged by widening even with a bark-favorite present."""
+    corpus = _make_corpus()
+    vec = np.random.RandomState(42).randn(384)
+
+    walker = WalkGenerator(alpha=0.0, max_words=10)
+    text1 = walker.generate(vec, corpus)
+    text2 = walker.generate(vec, corpus)
+
+    assert text1 == text2
+
+
+def test_spatial_steering_changes_output():
+    """Different spatial grids (same feature vector) should steer to different text."""
+    corpus = _make_corpus()
+    vec = np.random.RandomState(5).randn(384)
+
+    grid1 = np.random.RandomState(10).randn(100, 4)
+    grid2 = np.random.RandomState(20).randn(100, 4)
+
+    walker = WalkGenerator(alpha=1.0, max_words=10, spatial_weight=0.8)
+    text1 = walker.generate(vec, corpus, spatial_grid=grid1)
+    text2 = walker.generate(vec, corpus, spatial_grid=grid2)
+
+    assert text1 != text2
+
+
+def test_spatial_steering_deterministic():
+    """Same feature vector + same spatial grid should always produce the same output."""
+    corpus = _make_corpus()
+    vec = np.random.RandomState(5).randn(384)
+    grid = np.random.RandomState(10).randn(100, 4)
+
+    walker = WalkGenerator(alpha=0.7, max_words=10, spatial_weight=0.5)
+    text1 = walker.generate(vec, corpus, spatial_grid=grid)
+    text2 = walker.generate(vec, corpus, spatial_grid=grid)
+
+    assert text1 == text2
+
+
+def test_generate_without_spatial_grid_uses_legacy_path():
+    """Omitting spatial_grid should behave exactly as before this feature existed."""
+    corpus = _make_corpus()
+    vec = np.random.RandomState(42).randn(384)
+
+    walker = WalkGenerator(max_words=10)
+    text_default = walker.generate(vec, corpus)
+    text_explicit_none = walker.generate(vec, corpus, spatial_grid=None)
+
+    assert text_default == text_explicit_none
+
+
 def test_min_words_floor_prevents_early_stop():
     """A sentence end before min_words does not stop the walk."""
     vocabulary = ["ab.", "cd", "de", "the"]
