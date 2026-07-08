@@ -23,18 +23,72 @@ class ImageFeatureExtractor:
         self.image = Image.open(self.image_path)
         
     def extract_features(self, target_dim: int | None = None) -> np.ndarray:
-        """Extract feature vector from the image.
-        
+        """Extract feature vector from the whole image.
+
         Args:
             target_dim: Target dimensionality (default: self.TARGET_DIM)
-        
+
         Returns:
             Feature vector normalized to [-1, 1] range
         """
+        return self._features_from_image(self.image, target_dim)
+
+    def _transect_windows(self, steps: int) -> list[Image.Image]:
+        """Crop a window sliding left-to-right across the image.
+
+        The window is a third of the image wide (full height) and its left
+        edge moves in even increments so that `steps` windows together span
+        the full width. One step means one centered window.
+        """
+        img = self.image.convert("RGB")
+        # Cap the working size once so per-window extraction stays fast.
+        max_dim = 1024
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+        width, height = img.size
+        window = max(width // 3, min(width, 32))
+        span = width - window
+        crops = []
+        for i in range(steps):
+            fraction = 0.5 if steps == 1 else i / (steps - 1)
+            left = round(span * fraction)
+            crops.append(img.crop((left, 0, left + window, height)))
+        return crops
+
+    def extract_transect_features(
+        self, steps: int, target_dim: int | None = None
+    ) -> np.ndarray:
+        """Extract one feature vector per window of a left-to-right transect.
+
+        Scanning the actual bark instead of permuting a single vector makes
+        the steering trajectory physical: consecutive words are steered by
+        neighboring wood.
+
+        Args:
+            steps: Number of windows across the image (>= 1)
+            target_dim: Target dimensionality (default: self.TARGET_DIM)
+
+        Returns:
+            (steps, target_dim) array of feature vectors
+        """
+        if steps < 1:
+            raise ValueError("steps must be >= 1")
+        return np.array(
+            [
+                self._features_from_image(crop, target_dim)
+                for crop in self._transect_windows(steps)
+            ]
+        )
+
+    def _features_from_image(
+        self, image: Image.Image, target_dim: int | None = None
+    ) -> np.ndarray:
+        """Extract the feature vector from a PIL image (whole image or crop)."""
         if target_dim is None:
             target_dim = self.TARGET_DIM
         # Convert to RGB and resize large images for consistent, fast extraction
-        img = self.image.convert('RGB')
+        img = image.convert('RGB')
         max_dim = 512
         if max(img.size) > max_dim:
             img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)

@@ -32,6 +32,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from ..corpus import Corpus
 from ..corpus_loader import CorpusLoader
 from ..feature_extractor import ImageFeatureExtractor
+from ..text_generator import build_steering_features
 from ..walk_generator import WalkGenerator
 from . import images  # noqa: F401 — import registers the HEIC opener for PIL
 from .exif import extract_gps_latlon
@@ -257,8 +258,8 @@ def create_app() -> FastAPI:
             tmp.flush()
             try:
                 extractor = ImageFeatureExtractor(tmp.name)
-                features = extractor.extract_features(
-                    target_dim=corpus_obj.word_embeddings.shape[1]
+                features = build_steering_features(
+                    extractor, corpus_obj.word_embeddings.shape[1], max_words
                 )
                 text = WalkGenerator(alpha=alpha, max_words=max_words).generate(
                     features, corpus_obj

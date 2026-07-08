@@ -365,3 +365,59 @@ def test_min_words_floor_prevents_early_stop():
     # "ab." at position 2 is a sentence end but below min_words=4, so the walk
     # continues to the full length.
     assert len(words) == 4
+
+
+def test_step_vectors_steer_the_walk():
+    """A (T, D) steering matrix is accepted and each row steers its step."""
+    vocabulary = ["cold", "hot", "start"]
+    # Orthogonal-ish embeddings so each step vector clearly prefers one word.
+    word_embeddings = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    corpus = Corpus(
+        name="steer",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table={
+            "start": [("cold", 1), ("hot", 1)],
+            "cold": [("cold", 1), ("hot", 1)],
+            "hot": [("cold", 1), ("hot", 1)],
+        },
+        start_words=["start"],
+    )
+
+    # Row 0 picks the start word; row 1 points at "cold", row 2 at "hot".
+    steering = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]
+    )
+    walker = WalkGenerator(alpha=1.0, max_words=3, min_words=3)
+    words = walker.generate(steering, corpus).lower().split()
+
+    assert words == ["start", "cold", "hot"]
+
+
+def test_step_vectors_last_row_keeps_steering():
+    """A walk longer than the steering matrix reuses the last row."""
+    vocabulary = ["a", "b"]
+    word_embeddings = np.random.RandomState(0).randn(2, 8)
+    corpus = Corpus(
+        name="short-matrix",
+        vocabulary=vocabulary,
+        word_embeddings=word_embeddings,
+        bigram_table={"a": [("b", 1)], "b": [("a", 1)]},
+        start_words=["a"],
+    )
+
+    steering = np.random.RandomState(1).randn(2, 8)
+    walker = WalkGenerator(alpha=0.5, max_words=6, min_words=6)
+    words = walker.generate(steering, corpus).lower().split()
+
+    assert len(words) == 6

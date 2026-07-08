@@ -175,16 +175,28 @@ class WalkGenerator:
         return candidates[int(np.argmax(scores))][0]
 
     def generate(self, feature_vector: np.ndarray, corpus: Corpus) -> str:
-        """Generate text by walking the bigram model steered by the feature vector.
+        """Generate text by walking the n-gram model steered by image features.
 
         Args:
-            feature_vector: (D,) image feature vector
+            feature_vector: (D,) image feature vector, or a (T, D) matrix of
+                per-step steering vectors (e.g. a transect scanned across the
+                bark: row 0 steers the start word, row t steers step t; the
+                last row keeps steering if the walk outruns the rows).
             corpus: Corpus with vocabulary, embeddings, bigram table, start words
 
         Returns:
             Generated text string
         """
-        stride = max(1, len(feature_vector) // self.max_words)
+        features = np.asarray(feature_vector, dtype=float)
+        if features.ndim == 1:
+            step_vectors = None
+            base_vector = features
+            stride = max(1, len(base_vector) // self.max_words)
+        else:
+            step_vectors = features
+            base_vector = features[0]
+            stride = 0
+        feature_vector = base_vector
         vocab_index = {w: i for i, w in enumerate(corpus.vocabulary)}
 
         # Step 1: Pick first word from start_words by bark similarity
@@ -213,8 +225,12 @@ class WalkGenerator:
 
         # Step 2: Walk
         for step in range(1, self.max_words):
-            # Transform feature vector by rolling
-            rolled = np.roll(feature_vector, step * stride)
+            # Steer with this step's transect vector, or (legacy single-vector
+            # mode) by rolling the one vector we have.
+            if step_vectors is not None:
+                rolled = step_vectors[min(step, len(step_vectors) - 1)]
+            else:
+                rolled = np.roll(feature_vector, step * stride)
 
             candidates = self._next_candidates(words, corpus)
 
